@@ -134,7 +134,12 @@ package body VIA is
          when 2 => return V.DDRB;
          when 3 => return V.DDRA;
          when 4 =>
-            V.IFR := V.IFR and not IFR_T1;
+            --  A read in the 1 MHz cycle that timer 1 timed out in does
+            --  not clear its flag: setting it wins (b2's TIMINGS test,
+            --  recorded on a real BBC)
+            if not V.T1_Expired then
+               V.IFR := V.IFR and not IFR_T1;
+            end if;
             return Byte (V.T1_Counter mod 256);
          when 5 => return Byte ((V.T1_Counter / 256) mod 256);
          when 6 => return Byte (V.T1_Latch mod 256);

@@ -88,7 +88,7 @@ Notes:
 | 6845 CRTC + video ULA | Emulated per character clock: all modes, palette and mode changes mid-line and mid-frame (splits), hardware scrolling with screen-size wrap, cursor with skew and ULA segments, flashing colours, interlace sync & video. |
 | SAA5050 | Mode 7 with the real character shapes: mosaics (contiguous / separated), hold graphics, double height, flash, conceal, backgrounds. |
 | SN76489 | 3 tones + noise (white / periodic), volume-register sample playback; PulseAudio output paces the emulation. |
-| 2 x 6522 VIA | Timers per 1 MHz cycle with the real load / reload / one-shot rules, PB7 output, T2 pulse counting, IRQ output timing; passes 22 of the 24 b2 VIA and timing tests recorded on a real BBC (the two left are sub-cycle interrupt timing). System VIA (keyboard auto-scan, addressable latch, VSYNC, ADC end of conversion, CMOS clock on the Master) and user VIA. |
+| 2 x 6522 VIA | Timers per 1 MHz cycle with the real load / reload / one-shot rules, PB7 output, T2 pulse counting, IRQ output timing; passes 23 of the 24 b2 VIA and timing tests recorded on a real BBC (in VTIMEOU an interrupt handler's timer read lands one 1 MHz cycle early in half the cases). System VIA (keyboard auto-scan, addressable latch, VSYNC, ADC end of conversion, CMOS clock on the Master) and user VIA. |
 | Keyboard | Full matrix, start-up links, BREAK / SHIFT+BREAK / CTRL+BREAK; Master numeric keypad. |
 | 8271 FDC | Model B: commands used by DFS (read/write/verify/format/seek/read ID/special registers), byte-timed NMIs. |
 | WD1770 | Master: drive control latch at &FE24, type I-IV commands. |
