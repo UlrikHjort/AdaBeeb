@@ -59,6 +59,9 @@ package Basic is
    function Program_Byte (I : Natural) return Byte;
    function Program_Load return Word;
    function Source_Line_Of (Basic_Line : Natural) return Natural;
+   function Basic_Line_Of (Source_Line : Positive) return Integer;
+   --  BASIC line number of a text line (1-based) of the last
+   --  tokenized source, -1 when it has none (blank / error)
 
    procedure Build (Source : String; D : Dialect;
                     PRG : out Ada.Strings.Unbounded.Unbounded_String;

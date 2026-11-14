@@ -508,6 +508,16 @@ package body Basic is
       return 0;
    end Source_Line_Of;
 
+   function Basic_Line_Of (Source_Line : Positive) return Integer is
+   begin
+      for I in 1 .. Map_Count loop
+         if Line_Src (I) = Source_Line then
+            return Line_Nums (I);
+         end if;
+      end loop;
+      return -1;
+   end Basic_Line_Of;
+
    function Strip_Ext (P : String) return String is
       Dot : constant Natural := Index (P, ".", Ada.Strings.Backward);
       Sl  : constant Natural := Index (P, "/", Ada.Strings.Backward);

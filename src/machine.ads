@@ -132,7 +132,14 @@ package Machine is
    procedure Request_Break;
 
    type Stop_Reason is (None, Breakpoint, Watch_Read, Watch_Write,
-                        Step_Done, Paused);
+                        Step_Done, Paused, Basic_Line);
+
+   --  BASIC debugging: stop when BASIC's text pointer enters a program
+   --  line with a breakpoint, or (Step_Basic_Line) any other line
+   procedure Clear_Basic_Breakpoints;
+   procedure Add_Basic_Breakpoint (Line_Number : Natural);
+   procedure Step_Basic_Line;
+   function Basic_Stop_Line return Integer;   --  -1 = none
    function Last_Stop return Stop_Reason;
    function Stop_Text return String;
 

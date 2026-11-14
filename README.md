@@ -113,7 +113,8 @@ Ctrl+Shift+V paste text.
 Assembler (ACME syntax, see `src/asm.ads`; programs default to `*= $1900`,
 `!basic` makes a `10 CALL &xxxx` line), BBC BASIC tab (Ctrl+Shift+N; the
 tokeniser produces exactly the ROM's bytes, the running line is
-highlighted), debugger (F5 run / continue, F9 breakpoint, F10 / F11 /
+highlighted, F9 / gutter clicks set breakpoints on BASIC lines and
+F10 / F11 step one BASIC line at a time when stopped), debugger (F5 run / continue, F9 breakpoint, F10 / F11 /
 Shift+F11 step, Ctrl+F10 run to cursor, watchpoints, memory and
 disassembly panels), and Build -> disc image: a `.disc` file lists the
 files, an `.ssd` with a `!BOOT` is written and can be booted directly.

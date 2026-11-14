@@ -1733,9 +1733,117 @@ package body Machine is
    Out_Active  : Boolean := False;
    Out_SP      : Byte := 0;
 
+   ---------------------------------------------------------------------
+   --  BASIC line breakpoints
+   ---------------------------------------------------------------------
+
+   Max_Basic_BP : constant := 64;
+   Basic_BPs : array (1 .. Max_Basic_BP) of Natural := (others => 0);
+   Basic_BP_Count : Natural := 0;
+   Basic_Stepping : Boolean := False;
+   Basic_Last_Line : Integer := -1;    --  line the pointer was in
+   Basic_Stopped : Integer := -1;
+
+   --  Program lines in memory: start address and line number, sorted
+   Max_Lines : constant := 4000;
+   Line_Start : array (1 .. Max_Lines + 1) of Natural;
+   Line_Num   : array (1 .. Max_Lines) of Natural;
+   Line_Count : Natural := 0;
+
+   procedure Scan_Basic_Lines is
+      A : Natural := Natural (RAM (16#18#)) * 256;
+   begin
+      Line_Count := 0;
+      if RAM (A) /= 16#0D# then
+         return;
+      end if;
+      A := A + 1;
+      while A + 3 < 16#8000# and then RAM (A) < 16#80#
+        and then Line_Count < Max_Lines
+      loop
+         declare
+            Len : constant Natural := Natural (RAM (A + 2));
+         begin
+            exit when Len < 4;
+            Line_Count := Line_Count + 1;
+            Line_Start (Line_Count) := A;
+            Line_Num (Line_Count) :=
+              Natural (RAM (A)) * 256 + Natural (RAM (A + 1));
+            A := A + Len;
+         end;
+      end loop;
+      Line_Start (Line_Count + 1) := A;
+   end Scan_Basic_Lines;
+
+   function Line_At (Ptr : Natural) return Integer is
+      Lo : Natural := 1;
+      Hi : Natural := Line_Count;
+   begin
+      if Line_Count = 0 or else Ptr < Line_Start (1)
+        or else Ptr >= Line_Start (Line_Count + 1)
+      then
+         return -1;
+      end if;
+      while Lo < Hi loop
+         declare
+            Mid : constant Natural := (Lo + Hi + 1) / 2;
+         begin
+            if Line_Start (Mid) <= Ptr then
+               Lo := Mid;
+            else
+               Hi := Mid - 1;
+            end if;
+         end;
+      end loop;
+      return Line_Num (Lo);
+   end Line_At;
+
+   procedure Clear_Basic_Breakpoints is
+   begin
+      Basic_BP_Count := 0;
+   end Clear_Basic_Breakpoints;
+
+   procedure Add_Basic_Breakpoint (Line_Number : Natural) is
+   begin
+      if Basic_BP_Count < Max_Basic_BP then
+         Basic_BP_Count := Basic_BP_Count + 1;
+         Basic_BPs (Basic_BP_Count) := Line_Number;
+         Scan_Basic_Lines;
+      end if;
+   end Add_Basic_Breakpoint;
+
+   function Basic_Stop_Line return Integer is (Basic_Stopped);
+
+   --  True when BASIC just moved into a line it should stop at
+   function Basic_Check return Boolean is
+      Ptr : constant Natural :=
+        Natural (RAM (16#0B#)) + 256 * Natural (RAM (16#0C#));
+      L : constant Integer := Line_At (Ptr);
+   begin
+      if L = Basic_Last_Line then
+         return False;
+      end if;
+      Basic_Last_Line := L;
+      if L < 0 then
+         return False;
+      end if;
+      if Basic_Stepping then
+         Basic_Stopped := L;
+         return True;
+      end if;
+      for I in 1 .. Basic_BP_Count loop
+         if Basic_BPs (I) = L then
+            Basic_Stopped := L;
+            return True;
+         end if;
+      end loop;
+      return False;
+   end Basic_Check;
+
    function Debugging return Boolean is
      (BP_Count > 0 or else Watch_Count > 0 or else Temp_Addr >= 0
-      or else Out_Active or else Pause_Req);
+      or else Out_Active or else Pause_Req or else Basic_BP_Count > 0
+      or else Basic_Stepping);
 
    procedure Stop (R : Stop_Reason) is
    begin
@@ -1744,7 +1852,15 @@ package body Machine is
       Temp_Addr := -1;
       Out_Active := False;
       Pause_Req := False;
+      Basic_Stepping := False;
    end Stop;
+
+   procedure Step_Basic_Line is
+   begin
+      Scan_Basic_Lines;
+      Basic_Stepping := True;
+      Resume;
+   end Step_Basic_Line;
 
    procedure Resume is
    begin
@@ -1768,6 +1884,8 @@ package body Machine is
               Disasm.Hex4 (CPU.PC) & ")";
          when Step_Done => return "stopped at $" & Disasm.Hex4 (CPU.PC);
          when Paused => return "paused at $" & Disasm.Hex4 (CPU.PC);
+         when Basic_Line =>
+            return "BASIC line" & Basic_Stopped'Image;
       end case;
    end Stop_Text;
 
@@ -1923,6 +2041,9 @@ package body Machine is
          end if;
       end if;
       Frames := Frames + 1;
+      if Basic_BP_Count > 0 or else Basic_Stepping then
+         Scan_Basic_Lines;        --  the program may have changed
+      end if;
    end End_Of_Frame;
 
 
@@ -2028,6 +2149,12 @@ package body Machine is
             end if;
          end if;
          Executed := Step_System;
+         if Executed and then (Basic_BP_Count > 0 or else Basic_Stepping)
+           and then Basic_Check
+         then
+            Stop (Basic_Line);
+            return;
+         end if;
          if Executed and then (Watch_Hit or else Out_Active) then
             if Watch_Hit then
                Watch_Hit := False;

@@ -703,6 +703,26 @@ package body Forge is
 
    procedure Apply_Breakpoints is
    begin
+      --  BASIC: marks in the BASIC tab become BASIC line breakpoints
+      Machine.Clear_Basic_Breakpoints;
+      if Last_Kind = Basic_Program then
+         declare
+            T : constant Natural := Find_Tab (To_String (Basic_File));
+            procedure Set_Basic (Line : Natural) is
+               N : constant Integer := Basic.Basic_Line_Of (Line + 1);
+            begin
+               if N >= 0 then
+                  Machine.Add_Basic_Breakpoint (N);
+               end if;
+            end Set_Basic;
+         begin
+            if T > 0 then
+               Source_View.For_Each_Mark
+                 (Tabs (T).Buffer, Source_View.Breakpoint,
+                  Set_Basic'Unrestricted_Access);
+            end if;
+         end;
+      end if;
       Machine.Clear_Breakpoints;
       if not Built then
          return;
@@ -814,6 +834,7 @@ package body Forge is
       Machine.Clear_Breakpoints;
       Basic_File := Tabs (T).Path;
       Last_Kind := (if Ok then Basic_Program else No_Program);
+      Apply_Breakpoints;
       Set_Status (if Ok then "built " & Base_Name (To_String (PRG))
                   else "build failed");
       return Ok;
@@ -950,10 +971,24 @@ package body Forge is
    procedure Show_Stop is
       PC : constant Word := Machine.CPU_PC;
       F, L : Natural;
+      use type Machine.Stop_Reason;
    begin
       Stop_Shown := True;
       Clear_PC_Marks;
-      if Built then
+      if Machine.Last_Stop = Machine.Basic_Line then
+         declare
+            T : constant Natural := Find_Tab (To_String (Basic_File));
+            SL : constant Natural :=
+              Basic.Source_Line_Of (Natural'Max (0, Machine.Basic_Stop_Line));
+         begin
+            Basic_Line := Machine.Basic_Stop_Line;
+            if T > 0 and then SL > 0 then
+               Source_View.Add_Mark (Tabs (T).Buffer, Source_View.Current_PC,
+                                     SL - 1);
+               Goto_Line (T, SL);
+            end if;
+         end;
+      elsif Built then
          Asm.Line_Of (PC, F, L);
          if F > 0 then
             declare
@@ -1467,14 +1502,24 @@ package body Forge is
          when A_Pause =>
             Machine.Request_Break;
          when A_Step_Into =>
-            if Stopped then
+            if Stopped and then Last_Kind = Basic_Program
+              and then not Built
+            then
+               Machine.Step_Basic_Line;     --  one BASIC line
+               Resumed;
+            elsif Stopped then
                Machine.Step_Instruction;
                Show_Stop;
             else
                Machine.Request_Break;
             end if;
          when A_Step_Over =>
-            if Stopped then
+            if Stopped and then Last_Kind = Basic_Program
+              and then not Built
+            then
+               Machine.Step_Basic_Line;
+               Resumed;
+            elsif Stopped then
                Machine.Step_Over;
                if Machine.Break_Hit then
                   Show_Stop;

@@ -31,6 +31,7 @@ with Types; use Types;
 with Interfaces; use Interfaces;
 with Machine; use Machine;
 with Asm;
+with Basic;
 
 procedure Debug_Test is
    Failures : Natural := 0;
@@ -116,6 +117,43 @@ begin
    end loop;
    Check (not Break_Hit and then CPU_PC = Addr ("done")
           and then Peek (16#70#) = 3, "program finished (counter = 3)");
+
+   --  BASIC line breakpoints and stepping
+   Clear_Breakpoints;
+   Basic.Page := Default_Page;
+   Basic.Tokenize_Text ("10 A%=0" & ASCII.LF & "20 A%=A%+1" & ASCII.LF &
+                        "30 B%=A%*2" & ASCII.LF &
+                        "40 IF A%<3 GOTO 20" & ASCII.LF &
+                        "50 END" & ASCII.LF, Basic.Basic_II);
+   declare
+      Data : Byte_Array (0 .. Basic.Program_Length - 1);
+   begin
+      for I in Data'Range loop
+         Data (I) := Basic.Program_Byte (I);
+      end loop;
+      Resume;
+      Clear_Basic_Breakpoints;
+      Add_Basic_Breakpoint (30);
+      Inject_And_Run (Data, Basic.Program_Load, "RUN");
+   end;
+   Run_Until_Stop (800);
+   Check (Break_Hit and then Last_Stop = Basic_Line
+          and then Basic_Stop_Line = 30, "BASIC breakpoint: " & Stop_Text);
+   Clear_Basic_Breakpoints;
+   Step_Basic_Line;
+   Run_Until_Stop;
+   Check (Break_Hit and then Basic_Stop_Line = 40,
+          "BASIC step -> line 40: " & Stop_Text);
+   Step_Basic_Line;
+   Run_Until_Stop;
+   Check (Break_Hit and then Basic_Stop_Line = 20,
+          "BASIC step -> line 20 (GOTO): " & Stop_Text);
+   Resume;
+   for F in 1 .. 50 loop
+      Run_Frame;
+   end loop;
+   Check (not Break_Hit and then Peek (16#0404#) = 3,
+          "BASIC program finished (A% = 3)");
 
    if Failures > 0 then
       Put_Line (Failures'Image & " FAILED");
