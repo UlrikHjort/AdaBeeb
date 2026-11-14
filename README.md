@@ -28,7 +28,8 @@ Options: `--roms DIR`, `--rom N=FILE` (sideways ROM in slot N),
 testing `--headless N` (run N frames, save `shot.png`), `--png FILE`,
 `--type TEXT` (typed at the BASIC prompt, `\n` = RETURN),
 `--type-at FRAME TEXT`, `--screen` (print the screen as text),
-`--wav FILE`, `--dump FILE` (32 KB RAM), `--save-tape FILE`.
+`--wav FILE`, `--dump FILE` (32 KB RAM), `--save-tape FILE`,
+`--load-snapshot FILE` / `--save-snapshot FILE` (before / after the run).
 Command-line tools: `--basic SRC` (tokenise), `--list FILE`,
 `--asm SRC`.
 
@@ -95,7 +96,7 @@ Notes:
 | Tape | UEF (gzip or plain) through the 6850 ACIA and serial ULA, motor control, warp while the motor runs; what is SAVEd to tape can be stored as a UEF. |
 | ADC | uPD7002, joystick from the keypad or a host game controller, fire buttons. |
 | Model B+ | 64K: 20K shadow RAM (ACCCON bit 7, MODE 128-135), 12K private RAM, 1770 at &FE80, OS 2.00. |
-| Tube | 6502 Second Processor: Tube ULA (R1 24-byte FIFO, R2, R3 one or two bytes, R4, control flags, interrupts) and a 65C02 at 3 MHz with 64 KB RAM. On with `--tube` or Machine -> 6502 Second Processor (Tube), on all three models: BASIC runs in the parasite with PAGE = &800, HIMEM = &8000. Not yet in snapshots, and the monitor shows the host only. |
+| Tube | 6502 Second Processor: Tube ULA (R1 24-byte FIFO, R2, R3 one or two bytes, R4, control flags, interrupts) and a 65C02 at 3 MHz with 64 KB RAM. On with `--tube` or Machine -> 6502 Second Processor (Tube), on all three models: BASIC runs in the parasite with PAGE = &800, HIMEM = &8000. Saved in snapshots. |
 | Master 128 | 128 KB: shadow RAM (LYNNE), ANDY, HAZEL, sideways RAM 4-7, ACCCON / ROMSEL, CMOS RAM and real-time clock (kept in `~/.config/adabeeb/cmos.bin`). |
 
 Snapshots (Machine menu, Alt+S / Alt+L quick save/load) hold the whole

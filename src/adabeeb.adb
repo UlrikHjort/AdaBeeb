@@ -82,6 +82,7 @@ procedure AdaBeeb is
    Attach_File : Unbounded_String;
    Dump : Unbounded_String;
    Save_Tape : Unbounded_String;
+   Save_Snap, Load_Snap : Unbounded_String;
    type Timed_Text is record
       Frame : Natural := 0;
       Text  : Unbounded_String;
@@ -290,6 +291,10 @@ begin
             Attach_File := To_Unbounded_String (Next);
          elsif A = "--save-tape" then
             Save_Tape := To_Unbounded_String (Next);
+         elsif A = "--save-snapshot" then
+            Save_Snap := To_Unbounded_String (Next);
+         elsif A = "--load-snapshot" then
+            Load_Snap := To_Unbounded_String (Next);
          elsif A = "--dump" then
             Dump := To_Unbounded_String (Next);
          elsif A = "--forge" then
@@ -441,6 +446,12 @@ begin
                         Machine.Error_Message);
          end if;
       end if;
+      if Length (Load_Snap) > 0 then
+         Machine.Load_Snapshot (To_String (Load_Snap), Ok);
+         if not Ok then
+            Put_Line ("cannot load snapshot: " & Machine.Error_Message);
+         end if;
+      end if;
       for F in 1 .. Headless loop
          if Length (Text) > 0 and then F >= 60
            and then (Machine.At_Prompt or else F >= 400)
@@ -464,6 +475,12 @@ begin
          Machine.Save_Tape_Recording (To_String (Save_Tape), Ok);
          Put_Line ("tape recording:" & Machine.Tape_Recorded'Image &
                    " bytes" & (if Ok then "" else " (not written)"));
+      end if;
+      if Length (Save_Snap) > 0 then
+         Machine.Save_Snapshot (To_String (Save_Snap), Ok);
+         if not Ok then
+            Put_Line ("cannot save snapshot: " & Machine.Error_Message);
+         end if;
       end if;
       if Length (Dump) > 0 then
          declare

@@ -37,6 +37,7 @@
 --  M parasite NMI from R3, V two-byte R3, P parasite reset, T clear.
 --  Host registers at &FEE0-&FEE7, parasite registers at &FEF8-&FEFF.
 
+with Ada.Streams;
 with Types; use Types;
 
 package Tube is
@@ -56,6 +57,10 @@ package Tube is
 
    procedure Run (Host_Cycles : Natural);
    --  Run the parasite for the time of Host_Cycles (2 MHz) cycles.
+
+   procedure Save_State (S : access Ada.Streams.Root_Stream_Type'Class);
+   procedure Load_State (S : access Ada.Streams.Root_Stream_Type'Class);
+   --  The ULA, the parasite's CPU and its 64 KB (not the ROM image).
 
    function Parasite_PC return Word;
    function Parasite_Peek (Addr : Word) return Byte;

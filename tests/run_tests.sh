@@ -15,4 +15,14 @@ if echo "$out" | grep -q "TUBE 6502" && echo "$out" | grep -q "^ *800 *$"; then
 else
   echo "FAIL tube"; fail=1
 fi
+# Snapshot with the Second Processor: a variable in parasite memory survives
+snap=$(mktemp)
+bin/adabeeb --b --tube --headless 300 --type 'A%=4321\n' --save-snapshot "$snap" > /dev/null
+out=$(bin/adabeeb --b --tube --headless 60 --load-snapshot "$snap" --type-at 5 'PRINT A%\n' --screen)
+rm -f "$snap"
+if echo "$out" | grep -q "^ *4321 *$"; then
+  echo "ok   tube: snapshot keeps the second processor's state"
+else
+  echo "FAIL tube snapshot"; fail=1
+fi
 exit $fail

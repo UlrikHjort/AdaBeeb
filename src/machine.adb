@@ -1559,7 +1559,10 @@ package body Machine is
    --  Snapshots
    ---------------------------------------------------------------------
 
-   Snapshot_Magic : constant String := "ADABEEB1";
+   Snapshot_Magic : constant String := "ADABEEB2";
+   Old_Magic : constant String := "ADABEEB1";       --  no Tube flag
+
+   function Tube_On return Boolean is (Tube.Enabled and then Tube.ROM_Loaded);
 
    procedure Save_Snapshot (Path : String; Ok : out Boolean) is
       use Ada.Streams.Stream_IO;
@@ -1571,6 +1574,7 @@ package body Machine is
       S := Stream (F);
       String'Write (S, Snapshot_Magic);
       Model_Type'Write (S, Current_Model);
+      Boolean'Write (S, Tube_On);
       Byte_Array'Write (S, RAM);
       for B in 0 .. 15 loop
          Boolean'Write (S, Bank_Is_RAM (B));
@@ -1611,6 +1615,9 @@ package body Machine is
             String'Write (S, P);
          end;
       end loop;
+      if Tube_On then
+         Tube.Save_State (S);
+      end if;
       Close (F);
       Ok := True;
    exception
@@ -1628,12 +1635,13 @@ package body Machine is
       Magic : String (1 .. 8);
       M : Model_Type;
       P : Byte;
+      With_Tube : Boolean := False;
    begin
       Ok := False;
       Open (F, In_File, Path);
       S := Stream (F);
       String'Read (S, Magic);
-      if Magic /= Snapshot_Magic then
+      if Magic /= Snapshot_Magic and then Magic /= Old_Magic then
          Close (F);
          Err := To_Unbounded_String ("not an AdaBeeb snapshot");
          return;
@@ -1642,6 +1650,17 @@ package body Machine is
       if M /= Current_Model then
          Close (F);
          Err := To_Unbounded_String ("snapshot is for another model");
+         return;
+      end if;
+      if Magic = Snapshot_Magic then
+         Boolean'Read (S, With_Tube);
+      end if;
+      if With_Tube /= Tube_On then
+         Close (F);
+         Err := To_Unbounded_String
+           (if With_Tube
+            then "snapshot needs the 6502 Second Processor (Tube)"
+            else "snapshot is for a machine without the Second Processor");
          return;
       end if;
       Byte_Array'Read (S, RAM);
@@ -1693,6 +1712,9 @@ package body Machine is
             end;
          end;
       end loop;
+      if With_Tube then
+         Tube.Load_State (S);
+      end if;
       Close (F);
       Keyboard.Release_All;
       Ok := True;

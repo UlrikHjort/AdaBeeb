@@ -345,6 +345,81 @@ package body Tube is
       end loop;
    end Run;
 
+   ---------------------------------------------------------------------
+   --  Snapshots
+   ---------------------------------------------------------------------
+
+   procedure Save_State (S : access Ada.Streams.Root_Stream_Type'Class) is
+   begin
+      Byte_Array'Write (S, PH1);
+      Natural'Write (S, PH1_Head);
+      Natural'Write (S, PH1_Tail);
+      Natural'Write (S, PH1_Count);
+      Byte'Write (S, PH2);
+      Byte'Write (S, PH4);
+      Byte'Write (S, PH_Latch);
+      Byte_Array'Write (S, PH3);
+      Natural'Write (S, PH3_Pos);
+      Byte'Write (S, HP1);
+      Byte'Write (S, HP2);
+      Byte'Write (S, HP4);
+      Byte'Write (S, HP_Latch);
+      Byte_Array'Write (S, HP3);
+      Natural'Write (S, HP3_Pos);
+      Byte_Array'Write (S, HStat);
+      Byte_Array'Write (S, PStat);
+      Byte'Write (S, Flags);
+      Byte_Array'Write (S, RAM);
+      Boolean'Write (S, ROM_In);
+      Boolean'Write (S, P_NMI_Prev);
+      Integer'Write (S, Credit);
+      Byte'Write (S, CPU.A);
+      Byte'Write (S, CPU.X);
+      Byte'Write (S, CPU.Y);
+      Byte'Write (S, CPU.SP);
+      Word'Write (S, CPU.PC);
+      Byte'Write (S, CPU.Get_P);
+      Boolean'Write (S, CPU.NMI_Pending);
+   end Save_State;
+
+   procedure Load_State (S : access Ada.Streams.Root_Stream_Type'Class) is
+      P : Byte;
+   begin
+      Byte_Array'Read (S, PH1);
+      Natural'Read (S, PH1_Head);
+      Natural'Read (S, PH1_Tail);
+      Natural'Read (S, PH1_Count);
+      Byte'Read (S, PH2);
+      Byte'Read (S, PH4);
+      Byte'Read (S, PH_Latch);
+      Byte_Array'Read (S, PH3);
+      Natural'Read (S, PH3_Pos);
+      Byte'Read (S, HP1);
+      Byte'Read (S, HP2);
+      Byte'Read (S, HP4);
+      Byte'Read (S, HP_Latch);
+      Byte_Array'Read (S, HP3);
+      Natural'Read (S, HP3_Pos);
+      Byte_Array'Read (S, HStat);
+      Byte_Array'Read (S, PStat);
+      Byte'Read (S, Flags);
+      Byte_Array'Read (S, RAM);
+      Boolean'Read (S, ROM_In);
+      Boolean'Read (S, P_NMI_Prev);
+      Integer'Read (S, Credit);
+      Byte'Read (S, CPU.A);
+      Byte'Read (S, CPU.X);
+      Byte'Read (S, CPU.Y);
+      Byte'Read (S, CPU.SP);
+      Word'Read (S, CPU.PC);
+      Byte'Read (S, P);
+      CPU.Set_P (P);
+      Boolean'Read (S, CPU.NMI_Pending);
+      CPU.CMOS := True;
+      CPU.Jammed := False;
+      Update_Interrupts;
+   end Load_State;
+
    function Parasite_PC return Word is (CPU.PC);
    function Parasite_Peek (Addr : Word) return Byte is
      (if ROM_In and then Addr >= 16#F000# then ROM (Natural (Addr and 16#07FF#))
