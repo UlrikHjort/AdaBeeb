@@ -58,8 +58,12 @@ procedure Bitmap_Test is
       Bad : Natural := 0;
       Steady : Natural;
    begin
-      Machine.Type_Text ("MODE" & M'Image & ASCII.LF);
-      Frames (60);
+      --  cursor off, so a blinking cursor cannot cover a test pixel
+      Machine.Type_Text ("MODE" & M'Image & ":VDU 23,1,0;0;0;0;" & ASCII.LF);
+      while Machine.Typing_Busy loop
+         Frames (1);
+      end loop;
+      Frames (20);
       Set_Mode (M);
       Steady := Natural'Min (Colours, 8);
       for Y in 0 .. 255 loop
