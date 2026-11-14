@@ -85,6 +85,10 @@ package Machine is
    procedure Load_Sideways_ROM (Slot : Natural; Path : String;
                                 Ok : out Boolean);
    procedure Set_Sideways_RAM (Slot : Natural; On : Boolean);
+
+   Model_B_SWRAM : Boolean := True;
+   --  Give the Model B sideways RAM in slots 4-7 at power-on (as most
+   --  expanded machines had; the Master always has it).
    function ROM_Title (Slot : Natural) return String;   --  "" = empty
    function Current_ROM_Bank return Natural;
 

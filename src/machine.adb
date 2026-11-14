@@ -953,6 +953,11 @@ package body Machine is
             end if;
          end;
       end;
+      if Model_B_SWRAM then
+         for S in 4 .. 7 loop
+            Set_Sideways_RAM (S, True);
+         end loop;
+      end if;
       end if;
       declare
          Font : constant String := Find_File (ROM_Dir, "saa5050.fnt");

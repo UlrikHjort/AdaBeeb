@@ -94,6 +94,7 @@ package body GUI is
    Item_Warp    : Gtk_Check_Menu_Item;
    Item_Pause   : Gtk_Check_Menu_Item;
    Item_Fast_Tape : Gtk_Check_Menu_Item;
+   Item_SWRAM : Gtk_Check_Menu_Item;
    Item_B, Item_Master : Gtk_Radio_Menu_Item;
    Updating_Menu : Boolean := False;
 
@@ -156,6 +157,7 @@ package body GUI is
       Item_Warp.Set_Active (Warp);
       Item_Pause.Set_Active (Paused);
       Item_Fast_Tape.Set_Active (Machine.Fast_Tape);
+      Item_SWRAM.Set_Active (Machine.Model_B_SWRAM);
       if Machine.Model = Model_B then
          Item_B.Set_Active (True);
       else
@@ -426,6 +428,16 @@ package body GUI is
       end if;
    end On_Fast_Tape;
 
+   procedure On_SWRAM (Item : access Gtk_Check_Menu_Item_Record'Class) is
+   begin
+      if not Updating_Menu then
+         Machine.Model_B_SWRAM := Item.Get_Active;
+         if Machine.Model = Model_B then
+            Start_Machine (Model_B);    --  takes effect at power-on
+         end if;
+      end if;
+   end On_SWRAM;
+
    procedure On_Load_ROM (Item : access Gtk_Menu_Item_Record'Class) is
       pragma Unreferenced (Item);
       Path : constant String :=
@@ -589,6 +601,7 @@ package body GUI is
       Settings.Set ("integerscale", Integer_Scale);
       Settings.Set ("crt", Video.Scanlines);
       Settings.Set ("fasttape", Machine.Fast_Tape);
+      Settings.Set ("swram", Machine.Model_B_SWRAM);
       Settings.Set ("lastdir", To_String (Last_Dir));
       declare
          W, H : Gint;
@@ -1053,6 +1066,7 @@ package body GUI is
       Integer_Scale := Settings.Get ("integerscale", False);
       Video.Scanlines := Settings.Get ("crt", False);
       Machine.Fast_Tape := Settings.Get ("fasttape", True);
+      Machine.Model_B_SWRAM := Settings.Get ("swram", True);
       Last_Dir := To_Unbounded_String (Settings.Get ("lastdir", ""));
 
       Gtk_New (Win);
@@ -1100,6 +1114,8 @@ package body GUI is
       Add_Separator (M_Machine);
       Add_Item (M_Machine, "Sideways ROMs", On_ROM_List'Access);
       Add_Item (M_Machine, "Load sideways ROM...", On_Load_ROM'Access);
+      Add_Check (M_Machine, "Model B: sideways RAM in slots 4-7",
+                 Item_SWRAM, On_SWRAM'Access);
       Add_Separator (M_Machine);
       Add_Item (M_Machine, "Save _snapshot...", On_Save_Snapshot'Access);
       Add_Item (M_Machine, "_Load snapshot...", On_Load_Snapshot'Access);
