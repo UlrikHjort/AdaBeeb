@@ -1,0 +1,11 @@
+obj/
+bin/
+/*.png
+roms/*.rom
+roms/*.fnt
+roms/README-b-em.md
+discs/
+*.tgz
+examples/*.bin
+examples/*.inf
+examples/*.lbl

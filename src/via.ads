@@ -1,0 +1,93 @@
+-- ***************************************************************************
+--                               AdaBeeb - VIA
+--
+--           Copyright (C) 2026 By Ulrik Hørlyk Hjort
+--
+-- Permission is hereby granted, free of charge, to any person obtaining
+-- a copy of this software and associated documentation files (the
+-- "Software"), to deal in the Software without restriction, including
+-- without limitation the rights to use, copy, modify, merge, publish,
+-- distribute, sublicense, and/or sell copies of the Software, and to
+-- permit persons to whom the Software is furnished to do so, subject to
+-- the following conditions:
+--
+-- The above copyright notice and this permission notice shall be
+-- included in all copies or substantial portions of the Software.
+--
+-- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+-- EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+-- MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
+-- NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE
+-- LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION
+-- OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
+-- WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+-- ***************************************************************************
+--  MOS 6522 Versatile Interface Adapter (system and user VIA).
+--
+--  The owner sets the external pin levels (Port_A_In / Port_B_In) before
+--  reads and inspects the output registers after writes.
+
+with Interfaces; use Interfaces;
+with Types; use Types;
+
+package VIA is
+
+   type Chip is record
+      ORA, ORB, DDRA, DDRB : Byte := 0;
+      Port_A_In, Port_B_In : Byte := 16#FF#;   --  external pin levels
+      T1_Counter : Integer := 16#FFFF#;
+      T1_Latch   : Integer := 16#FFFF#;
+      T1_Armed   : Boolean := False;
+      T2_Counter : Integer := 16#FFFF#;
+      T2_Latch_Lo : Byte := 16#FF#;
+      T2_Armed   : Boolean := False;
+      T1_Load    : Boolean := False;   --  load the latch on the next tick
+      Clear_Pending : Byte := 0;       --  IFR bits cleared by a read
+      T1_Expired : Boolean := False;   --  timed out on the previous tick
+      T2_Load    : Boolean := False;
+      PB7        : Boolean := True;    --  timer 1 output (ACR bit 7)
+      PB6_Prev   : Boolean := True;    --  for T2 pulse counting
+      SR, ACR, PCR : Byte := 0;
+      IFR, IER   : Byte := 0;
+      CA1        : Boolean := False;
+      CA2, CB1, CB2 : Boolean := False;
+   end record;
+
+   IFR_CA2 : constant Byte := 16#01#;
+   IFR_CA1 : constant Byte := 16#02#;
+   IFR_SR  : constant Byte := 16#04#;
+   IFR_CB2 : constant Byte := 16#08#;
+   IFR_CB1 : constant Byte := 16#10#;
+   IFR_T2  : constant Byte := 16#20#;
+   IFR_T1  : constant Byte := 16#40#;
+
+   procedure Reset (V : in out Chip);
+   procedure Tick (V : in out Chip; Cycles : Natural);
+   function Read (V : in out Chip; Reg : Natural) return Byte;
+   procedure Write (V : in out Chip; Reg : Natural; Value : Byte);
+
+   function IRQ (V : Chip) return Boolean is
+     ((V.IFR and V.IER and 16#7F#) /= 0);
+
+   procedure Set_CA1 (V : in out Chip; Level : Boolean);
+   --  Drive the CA1 input; the active edge (PCR bit 0) raises IFR_CA1.
+
+   procedure Count_PB6 (V : in out Chip);
+   --  Call after changing Port_B_In: a falling edge on PB6 counts timer 2
+   --  down in pulse-counting mode (ACR bit 5).
+
+   procedure Set_CA2 (V : in out Chip; Level : Boolean);
+   procedure Set_CB1 (V : in out Chip; Level : Boolean);
+   procedure Set_CB2 (V : in out Chip; Level : Boolean);
+   --  The other handshake inputs (CA2/CB2 only in their input modes).
+
+   function Port_A_Out (V : Chip) return Byte is (V.ORA and V.DDRA);
+   function Port_B_Out (V : Chip) return Byte is (V.ORB and V.DDRB);
+   --  Bits actively driven high by the VIA (inputs read as 0 here).
+
+   function CA2_High (V : Chip) return Boolean;
+   function CB2_High (V : Chip) return Boolean;
+   --  Levels of the CA2/CB2 outputs in manual output mode
+   --  (other modes report high).
+
+end VIA;

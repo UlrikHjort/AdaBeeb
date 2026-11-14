@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- BBC BASIC II / IV text (AdaBeeb Forge) -->
+<language id="bbcbasic" name="BBC BASIC" version="2.0" _section="Source">
+  <metadata>
+    <property name="globs">*.bas;*.bbc</property>
+  </metadata>
+  <styles>
+    <style id="comment"  name="REM"         map-to="def:comment"/>
+    <style id="string"   name="String"      map-to="def:string"/>
+    <style id="keyword"  name="Keyword"     map-to="def:keyword"/>
+    <style id="star"     name="OS command"  map-to="def:preprocessor"/>
+    <style id="number"   name="Number"      map-to="def:number"/>
+    <style id="lineno"   name="Line number" map-to="def:preprocessor"/>
+    <style id="procfn"   name="PROC / FN"   map-to="def:function"/>
+    <style id="asm"      name="Assembler"   map-to="def:builtin"/>
+  </styles>
+  <default-regex-options case-sensitive="true"/>
+  <definitions>
+    <context id="bbcbasic">
+      <include>
+        <context id="lineno" style-ref="lineno">
+          <match>^\s*[0-9]+</match>
+        </context>
+        <context id="rem" style-ref="comment" end-at-line-end="true">
+          <start>REM</start>
+        </context>
+        <context id="star" style-ref="star" end-at-line-end="true">
+          <start>(?&lt;=^|:|^\s*[0-9]+)\s*\*</start>
+        </context>
+        <context id="string" style-ref="string" end-at-line-end="true">
+          <start>"</start>
+          <end>"</end>
+        </context>
+        <context id="procfn" style-ref="procfn">
+          <match>(PROC|FN)[A-Za-z0-9_`]+</match>
+        </context>
+        <context id="hex" style-ref="number">
+          <match>&amp;[0-9A-F]+</match>
+        </context>
+        <context id="number" style-ref="number">
+          <match>\b[0-9]+(\.[0-9]*)?(E-?[0-9]+)?\b</match>
+        </context>
+        <context id="keyword" style-ref="keyword">
+          <match>(AND|ABS|ACS|ADVAL|ASC|ASN|ATN|AUTO|BGET|BPUT|COLOUR|CALL|CHAIN|CHR\$|CLEAR|CLOSE|CLG|CLS|COS|COUNT|DATA|DEG|DEF|DELETE|DIV|DIM|DRAW|ENDPROC|END|ENVELOPE|ELSE|EVAL|ERL|ERROR|EOF|EOR|ERR|EXP|EXT|FOR|FALSE|GOTO|GET\$|GET|GOSUB|GCOL|HIMEM|INPUT|IF|INKEY\$|INKEY|INT|INSTR\(|LIST|LINE|LOAD|LOMEM|LOCAL|LEFT\$\(|LEN|LET|LOG|LN|MID\$\(|MODE|MOD|MOVE|NEXT|NEW|NOT|OLD|ON|OFF|OR|OPENIN|OPENOUT|OPENUP|OSCLI|PRINT|PAGE|PTR|PI|PLOT|POINT\(|POS|RETURN|REPEAT|REPORT|READ|RUN|RAD|RESTORE|RIGHT\$\(|RND|RENUMBER|STEP|SAVE|SGN|SIN|SQR|SPC|STR\$|STRING\$\(|SOUND|STOP|TAN|THEN|TO|TAB\(|TRACE|TIME|TRUE|UNTIL|USR|VDU|VAL|VPOS|WIDTH|TOP)</match>
+        </context>
+      </include>
+    </context>
+  </definitions>
+</language>

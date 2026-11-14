@@ -1,0 +1,148 @@
+# AdaBeeb
+
+A BBC Micro (Model B and Master 128) emulator written in Ada 2012 with
+GtkAda, with **Forge**: a 6502 assembler IDE, BBC BASIC editor,
+source-level debugger and graphics editors around the running machine.
+It is the BBC sibling of AdaC64 (`../c64`).
+
+## Build and run
+
+    make                     # GNAT, gprbuild, GtkAda, libpulse-dev, zlib,
+                             # libgtksourceview-4 (Forge's editor)
+    bin/adabeeb              # Model B (or the model used last time)
+    bin/adabeeb --master     # BBC Master 128
+    bin/adabeeb game.ssd     # autostart (also .dsd .uef .bas .asm)
+    bin/adabeeb-forge        # Forge as the main window
+    make tests               # CPU, debugger, bitmap/ULA and BASIC tests
+    make b2tests             # b2's real-hardware VIA / timing tests (slow)
+
+Discs boot with SHIFT+BREAK when they have a boot option, otherwise the
+first file is `CHAIN`ed (BASIC) or `*RUN`; tapes get `*TAPE` and
+`CHAIN""` / `*RUN`; `.bas` files are tokenised and RUN, `.asm` files
+assembled and started (RUN through a `!basic` stub, else `CALL &start`).
+
+Options: `--roms DIR`, `--rom N=FILE` (sideways ROM in slot N),
+`--swram N`, `--links HEX` (start-up links), `--attach FILE`, and for
+testing `--headless N` (run N frames, save `shot.png`), `--png FILE`,
+`--type TEXT` (typed at the BASIC prompt, `\n` = RETURN),
+`--type-at FRAME TEXT`, `--screen` (print the screen as text),
+`--wav FILE`, `--dump FILE` (32 KB RAM), `--save-tape FILE`.
+Command-line tools: `--basic SRC` (tokenise), `--list FILE`,
+`--asm SRC`.
+
+## ROMs
+
+AdaBeeb contains no Acorn software. Like the real machine it needs the
+original system ROMs, which are still copyrighted by their owners. Use
+images you are entitled to use: dumps read out of your own BBC Micro or
+Master (an EPROM reader, or `*SAVE` of the ROM area from a running
+machine), or copies from a source that is licensed to distribute them.
+Do not pass the ROM files on together with AdaBeeb.
+
+Put the files in the `roms/` directory next to `bin/` (or point to
+another directory with `--roms DIR`). The names and sizes must be exactly
+these:
+
+| File | Size | Contents | Needed for |
+|------|------|----------|------------|
+| `os12.rom` | 16 KB | Acorn MOS 1.20 (the Model B operating system, &C000-&FFFF) | Model B (required) |
+| `basic2.rom` | 16 KB | BBC BASIC II, loaded into sideways slot 15 | Model B (without it the machine starts without a language) |
+| `dnfs120.rom` | 16 KB | Acorn DNFS 1.20 (DFS 1.20 for the 8271 disc controller), slot 14 | Model B discs (without it: tape only, PAGE = &E00) |
+| `mos320.rom` | 128 KB | Master 128 MOS 3.20: the 16 KB MOS followed by the seven internal ROMs for slots 9-15 (DFS, ADFS, BASIC IV, View, ...) in that order | Master 128 (required) |
+| `saa5050.fnt` | 46 KB | SAA5050 teletext character shapes in the B-Em "BEMTTX01" font format | optional: without it mode 7 is drawn with characters made from the OS font |
+
+The files are searched for in this order: the `--roms` directory,
+`roms/` next to the program, `roms/` and `../roms/` in the current
+directory, `/usr/share/adabeeb/roms/`. If `os12.rom` or `mos320.rom` is
+missing, AdaBeeb says so when it starts.
+
+Notes:
+
+* The DFS must be one for the **8271** (DFS 0.90, 1.20, DNFS). DFS 2.x is
+  the Master's 1770 version and does not work in a Model B.
+* More sideways ROMs (16 KB images) can be loaded with `--rom N=FILE`
+  (slot 0-15) or Machine -> Load sideways ROM; `--swram N` makes a slot
+  sideways RAM. On the Master, slots 4-7 are sideways RAM already.
+* The Master keeps its configuration (`*CONFIGURE`) and clock in CMOS
+  RAM, stored in `~/.config/adabeeb/cmos.bin`; delete that file to get
+  the defaults back (DFS and BASIC, MODE 7).
+* The same goes for software: the disc and tape images in `discs/` used
+  for testing (Acorn's Welcome disc and tape, the B-Em demo disc) are
+  third-party software and are not part of AdaBeeb.
+* Klaus Dormann's 6502 / 65C02 test binaries in `tests/` are not ROMs;
+  they are free test programs used by `make tests`.
+
+## What is emulated
+
+| Part | Notes |
+|------|-------|
+| 6502 / 65SC12 | All documented and the stable undocumented NMOS opcodes, decimal mode, exact cycle counts; CMOS mode for the Master (BRA, PHX/PLY, STZ, TRB/TSB, (zp), JMP (abs,X), defined NOPs, Rockwell bit ops as an option). Passes Klaus Dormann's 6502 functional and 65C02 extended tests. |
+| 1 MHz bus | CPU clock stretching on accesses to the 1 MHz devices. |
+| 6845 CRTC + video ULA | Emulated per character clock: all modes, palette and mode changes mid-line and mid-frame (splits), hardware scrolling with screen-size wrap, cursor with skew and ULA segments, flashing colours, interlace sync & video. |
+| SAA5050 | Mode 7 with the real character shapes: mosaics (contiguous / separated), hold graphics, double height, flash, conceal, backgrounds. |
+| SN76489 | 3 tones + noise (white / periodic), volume-register sample playback; PulseAudio output paces the emulation. |
+| 2 x 6522 VIA | Timers per 1 MHz cycle with the real load / reload / one-shot rules, PB7 output, T2 pulse counting, IRQ output timing; passes 22 of the 24 b2 VIA and timing tests recorded on a real BBC (the two left are sub-cycle interrupt timing). System VIA (keyboard auto-scan, addressable latch, VSYNC, ADC end of conversion, CMOS clock on the Master) and user VIA. |
+| Keyboard | Full matrix, start-up links, BREAK / SHIFT+BREAK / CTRL+BREAK; Master numeric keypad. |
+| 8271 FDC | Model B: commands used by DFS (read/write/verify/format/seek/read ID/special registers), byte-timed NMIs. |
+| WD1770 | Master: drive control latch at &FE24, type I-IV commands. |
+| Discs | SSD / DSD images, two drives, written back after every write; read-only files are write-protected discs. |
+| Tape | UEF (gzip or plain) through the 6850 ACIA and serial ULA, motor control, warp while the motor runs; what is SAVEd to tape can be stored as a UEF. |
+| ADC | uPD7002, joystick from the keypad or a host game controller, fire buttons. |
+| Master 128 | 128 KB: shadow RAM (LYNNE), ANDY, HAZEL, sideways RAM 4-7, ACCCON / ROMSEL, CMOS RAM and real-time clock (kept in `~/.config/adabeeb/cmos.bin`). |
+
+Snapshots (Machine menu, Alt+S / Alt+L quick save/load) hold the whole
+machine; the monitor (Alt+M) has registers, disassembly, memory,
+breakpoints, watchpoints and stepping.
+
+## Keys
+
+Symbolic mapping by default (type the character you mean; Input menu:
+positional). F1-F9 = f1-f9, F10 = f0, F12 / Pause = BREAK, End / Insert /
+Home = COPY, Caps Lock = CAPS LOCK, Page Up = SHIFT LOCK, ` = £.
+Emulator: F11 warp, Alt+Enter fullscreen, Alt+A autostart, Alt+D insert
+disc, Alt+R power-on reset, Alt+M monitor, Alt+S / Alt+L quick snapshot,
+Ctrl+Shift+V paste text.
+
+## Forge
+
+Assembler (ACME syntax, see `src/asm.ads`; programs default to `*= $1900`,
+`!basic` makes a `10 CALL &xxxx` line), BBC BASIC tab (Ctrl+Shift+N; the
+tokeniser produces exactly the ROM's bytes, the running line is
+highlighted), debugger (F5 run / continue, F9 breakpoint, F10 / F11 /
+Shift+F11 step, Ctrl+F10 run to cursor, watchpoints, memory and
+disassembly panels), and Build -> disc image: a `.disc` file lists the
+files, an `.ssd` with a `!BOOT` is written and can be booted directly.
+
+Tools:
+
+* **Teletext editor** (Ctrl+R, `.m7`): 40 x 25 mode 7 screens, text typed
+  in, control codes from a palette, sixel graphics drawn with the mouse,
+  shown exactly as the SAA5050 renders them; export as BASIC or ACME,
+  show / live / grab with the emulator.
+* **Character editor** (Ctrl+K, `.udg`): VDU 23 characters 32-255 from
+  the OS font; export as VDU 23 lines or ACME, live in the running OS's
+  font memory (*FX20 for the lower codes).
+* **Bitmap editor** (Ctrl+B, `.bbm`): modes 0, 1, 2, 4, 5 with their
+  palettes (VDU 19), pencil / line / rectangle / ellipse / fill / pick,
+  PNG import with dithering, screen dump + BASIC loader or ACME export,
+  show / live / grab with the emulator.
+
+## Source layout
+
+    src/mos6502.*      6502 / 65SC12 core       src/via.*       6522 VIA
+    src/display.*      6845 CRTC, video ULA, SAA5050 (per character clock)
+    src/teletext_font.* SAA5050 shapes           src/sound.*     SN76489
+    src/machine.*      memory maps, paging, I/O, run loop, debugger
+    src/keyboard.*     matrix and host keys     src/tape.*      UEF, ACIA
+    src/fdc8271.*      8271                     src/wd1770.*    WD1770
+    src/disc_image.*   SSD / DSD, catalogue     src/gui.*       GtkAda
+    src/monitor*.*     machine-code monitor     src/disasm.*    disassembler
+    src/asm.*          assembler                src/basic.*     BBC BASIC
+    src/forge.*        Forge window             src/source_view.* editor
+    src/teletext_*     teletext editor          src/char_*      VDU 23 editor
+    src/bitmap_*       bitmap editor            src/editor_util.* helpers
+    tests/             CPU (Klaus Dormann), debugger, bitmap/ULA and
+                       BASIC-against-the-ROM tests; tests/b2/ holds test
+                       programs from the b2 emulator (GPL v3) with output
+                       and images recorded on real machines
+    examples/hello.asm
