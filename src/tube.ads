@@ -66,4 +66,28 @@ package Tube is
    function Parasite_Peek (Addr : Word) return Byte;
    procedure Parasite_Poke (Addr : Word; Value : Byte);
 
+   --  Debugging the parasite.  The hooks are installed by the debugger:
+   --  Before runs ahead of each instruction, After once it has run (with
+   --  its opcode), On_Access on every memory access the parasite makes.
+   --  When Before or After returns True the parasite halts and stays
+   --  halted until Resume; the instruction Resume continues with is not
+   --  checked by Before again (so a breakpoint can be stepped past).
+
+   type Before_Hook is access function (PC : Word; SP : Byte) return Boolean;
+   type After_Hook is access function (Op : Byte) return Boolean;
+   type Access_Hook is access procedure (Addr : Word; Is_Write : Boolean);
+   Before    : Before_Hook := null;
+   After     : After_Hook := null;
+   On_Access : Access_Hook := null;
+
+   function Halted return Boolean;
+   procedure Resume;
+
+   function Parasite_A return Byte;
+   function Parasite_X return Byte;
+   function Parasite_Y return Byte;
+   function Parasite_SP return Byte;
+   function Parasite_P return Byte;
+   procedure Set_Parasite_PC (Addr : Word);
+
 end Tube;

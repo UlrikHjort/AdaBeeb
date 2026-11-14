@@ -296,6 +296,19 @@ package body Machine is
    --  Debugger state used by the bus
    ---------------------------------------------------------------------
 
+   function Tube_On return Boolean is (Tube.Enabled and then Tube.ROM_Loaded);
+   function Tube_Active return Boolean is (Tube_On);
+
+   Parasite_Debug : Boolean := False;    --  debugging the parasite
+
+   procedure Set_Debug_CPU (C : Debug_CPU_Type) is
+   begin
+      Parasite_Debug := C = Parasite_CPU and then Tube_On;
+   end Set_Debug_CPU;
+
+   function Debug_CPU return Debug_CPU_Type is
+     (if Parasite_Debug then Parasite_CPU else Host_CPU);
+
    type Watch is record
       From, To : Word := 0;
       On_Read, On_Write : Boolean := False;
@@ -701,7 +714,7 @@ package body Machine is
 
    function Bus_Read_At (Addr : Word) return Byte is
    begin
-      if Watch_Count > 0 then
+      if Watch_Count > 0 and then not Parasite_Debug then
          Check_Watch (Addr, False);
       end if;
       if Master then
@@ -728,7 +741,7 @@ package body Machine is
 
    procedure Bus_Write_At (Addr : Word; Value : Byte) is
    begin
-      if Watch_Count > 0 then
+      if Watch_Count > 0 and then not Parasite_Debug then
          Check_Watch (Addr, True);
       end if;
       if Master then
@@ -1096,6 +1109,7 @@ package body Machine is
             end if;
          end;
       end if;
+      Set_Debug_CPU (if Tube_On then Parasite_CPU else Host_CPU);
       declare
          Font : constant String := Find_File (ROM_Dir, "saa5050.fnt");
       begin
@@ -1117,6 +1131,18 @@ package body Machine is
    function Frame_Count return Natural is (Frames);
    function Frame_Rate return Float is (2_000_000.0 / (312.0 * 128.0));
    function Get_PC return Word is (CPU.PC);
+
+   function Program_Peek (Addr : Word) return Byte is
+     (if Tube_On then Tube.Parasite_Peek (Addr) else Peek (Addr));
+
+   procedure Program_Poke (Addr : Word; Value : Byte) is
+   begin
+      if Tube_On then
+         Tube.Parasite_Poke (Addr, Value);
+      else
+         Poke (Addr, Value);
+      end if;
+   end Program_Poke;
 
    function Peek (Addr : Word) return Byte is
    begin
@@ -1286,7 +1312,8 @@ package body Machine is
    Shift_Frames : Natural := 0;    --  SHIFT held for the boot
 
    function Default_Page return Word is
-     (if Current_Model = Master_128 then 16#0E00#
+     (if Tube_On then 16#0800#
+      elsif Current_Model = Master_128 then 16#0E00#
       elsif Bank_Used (14) or else Bank_Used (13) then 16#1900#
       else 16#0E00#);
    Auto : Auto_State := Idle;
@@ -1321,21 +1348,21 @@ package body Machine is
          when Inject =>
             if Auto_Data /= null then
                for I in Auto_Data'Range loop
-                  Poke (Auto_Load + Word (I - Auto_Data'First),
-                        Auto_Data (I));
+                  Program_Poke (Auto_Load + Word (I - Auto_Data'First),
+                                Auto_Data (I));
                end loop;
-               if Auto_Load = Word (RAM (16#18#)) * 256 then
+               if Auto_Load = Word (Program_Peek (16#18#)) * 256 then
                   --  BASIC program at PAGE: set TOP / LOMEM / VARTOP
                   declare
                      Top : constant Word :=
                        Auto_Load + Word (Auto_Data'Length);
                   begin
-                     RAM (16#12#) := Lo (Top);
-                     RAM (16#13#) := Hi (Top);
-                     RAM (16#00#) := Lo (Top);
-                     RAM (16#01#) := Hi (Top);
-                     RAM (16#02#) := Lo (Top);
-                     RAM (16#03#) := Hi (Top);
+                     Program_Poke (16#12#, Lo (Top));
+                     Program_Poke (16#13#, Hi (Top));
+                     Program_Poke (16#00#, Lo (Top));
+                     Program_Poke (16#01#, Hi (Top));
+                     Program_Poke (16#02#, Lo (Top));
+                     Program_Poke (16#03#, Hi (Top));
                   end;
                end if;
             end if;
@@ -1561,8 +1588,6 @@ package body Machine is
 
    Snapshot_Magic : constant String := "ADABEEB2";
    Old_Magic : constant String := "ADABEEB1";       --  no Tube flag
-
-   function Tube_On return Boolean is (Tube.Enabled and then Tube.ROM_Loaded);
 
    procedure Save_Snapshot (Path : String; Ok : out Boolean) is
       use Ada.Streams.Stream_IO;
@@ -1800,25 +1825,28 @@ package body Machine is
    Line_Num   : array (1 .. Max_Lines) of Natural;
    Line_Count : Natural := 0;
 
+   function PM (A : Natural) return Byte is (Program_Peek (Word (A)));
+
    procedure Scan_Basic_Lines is
-      A : Natural := Natural (RAM (16#18#)) * 256;
+      A : Natural := Natural (PM (16#18#)) * 256;
+      Limit : constant Natural := (if Tube_On then 16#F800# else 16#8000#);
    begin
       Line_Count := 0;
-      if RAM (A) /= 16#0D# then
+      if PM (A) /= 16#0D# then
          return;
       end if;
       A := A + 1;
-      while A + 3 < 16#8000# and then RAM (A) < 16#80#
+      while A + 3 < Limit and then PM (A) < 16#80#
         and then Line_Count < Max_Lines
       loop
          declare
-            Len : constant Natural := Natural (RAM (A + 2));
+            Len : constant Natural := Natural (PM (A + 2));
          begin
             exit when Len < 4;
             Line_Count := Line_Count + 1;
             Line_Start (Line_Count) := A;
             Line_Num (Line_Count) :=
-              Natural (RAM (A)) * 256 + Natural (RAM (A + 1));
+              Natural (PM (A)) * 256 + Natural (PM (A + 1));
             A := A + Len;
          end;
       end loop;
@@ -1867,7 +1895,7 @@ package body Machine is
    --  True when BASIC just moved into a line it should stop at
    function Basic_Check return Boolean is
       Ptr : constant Natural :=
-        Natural (RAM (16#0B#)) + 256 * Natural (RAM (16#0C#));
+        Natural (PM (16#0B#)) + 256 * Natural (PM (16#0C#));
       L : constant Integer := Line_At (Ptr);
    begin
       if L = Basic_Last_Line then
@@ -1905,6 +1933,78 @@ package body Machine is
       Basic_Stepping := False;
    end Stop;
 
+   ---------------------------------------------------------------------
+   --  Debugging the Second Processor: hooks the Tube calls around each
+   --  parasite instruction and on its memory accesses
+   ---------------------------------------------------------------------
+
+   P_Reason : Stop_Reason := None;
+   P_Step   : Boolean := False;       --  stop after one instruction
+
+   function P_Before (PC : Word; SP : Byte) return Boolean is
+   begin
+      if not Parasite_Debug then
+         return False;
+      elsif BP_Count > 0 and then Is_Breakpoint (PC) then
+         P_Reason := Breakpoint;
+         return True;
+      elsif Temp_Addr >= 0 and then Integer (PC) = Temp_Addr
+        and then SP >= Temp_SP
+      then
+         P_Reason := Step_Done;
+         return True;
+      end if;
+      return False;
+   end P_Before;
+
+   function P_After (Op : Byte) return Boolean is
+   begin
+      if (Basic_BP_Count > 0 or else Basic_Stepping) and then Basic_Check
+      then
+         P_Reason := Basic_Line;    --  with the Tube, BASIC runs here
+         return True;
+      elsif not Parasite_Debug then
+         return False;
+      elsif Watch_Hit then
+         Watch_Hit := False;
+         P_Reason := (if Watch_Write_Hit then Watch_Write else Watch_Read);
+         return True;
+      elsif P_Step then
+         P_Reason := Step_Done;
+         return True;
+      elsif Out_Active and then Op in 16#60# | 16#40#
+        and then Tube.Parasite_SP > Out_SP
+      then
+         P_Reason := Step_Done;
+         return True;
+      end if;
+      return False;
+   end P_After;
+
+   procedure P_Access (Addr : Word; Is_Write : Boolean) is
+   begin
+      if Watch_Count > 0 then
+         Check_Watch (Addr, Is_Write);
+      end if;
+   end P_Access;
+
+   procedure Update_Tube_Hooks is
+   begin
+      if Tube_On and then ((Parasite_Debug and then (Debugging or P_Step))
+                           or else Basic_BP_Count > 0 or else Basic_Stepping)
+      then
+         Tube.Before := P_Before'Access;
+         Tube.After := P_After'Access;
+         Tube.On_Access :=
+           (if Parasite_Debug and then Watch_Count > 0
+            then P_Access'Access else null);
+      else
+         Tube.Before := null;
+         Tube.After := null;
+         Tube.On_Access := null;
+      end if;
+   end Update_Tube_Hooks;
+
    procedure Step_Basic_Line is
    begin
       Scan_Basic_Lines;
@@ -1917,6 +2017,7 @@ package body Machine is
       Break_Flag := False;
       Skip_Break := True;
       Watch_Hit := False;
+      Tube.Resume;
    end Resume;
 
    function Last_Stop return Stop_Reason is (Reason);
@@ -1925,15 +2026,15 @@ package body Machine is
    begin
       case Reason is
          when None => return "";
-         when Breakpoint => return "breakpoint at $" & Disasm.Hex4 (CPU.PC);
+         when Breakpoint => return "breakpoint at $" & Disasm.Hex4 (CPU_PC);
          when Watch_Read =>
             return "read of $" & Disasm.Hex4 (Watch_Addr) & " (PC $" &
-              Disasm.Hex4 (CPU.PC) & ")";
+              Disasm.Hex4 (CPU_PC) & ")";
          when Watch_Write =>
             return "write to $" & Disasm.Hex4 (Watch_Addr) & " (PC $" &
-              Disasm.Hex4 (CPU.PC) & ")";
-         when Step_Done => return "stopped at $" & Disasm.Hex4 (CPU.PC);
-         when Paused => return "paused at $" & Disasm.Hex4 (CPU.PC);
+              Disasm.Hex4 (CPU_PC) & ")";
+         when Step_Done => return "stopped at $" & Disasm.Hex4 (CPU_PC);
+         when Paused => return "paused at $" & Disasm.Hex4 (CPU_PC);
          when Basic_Line =>
             return "BASIC line" & Basic_Stopped'Image;
       end case;
@@ -1956,7 +2057,7 @@ package body Machine is
    procedure Step_Out is
    begin
       Out_Active := True;
-      Out_SP := CPU.SP;
+      Out_SP := (if Parasite_Debug then Tube.Parasite_SP else CPU.SP);
       Resume;
    end Step_Out;
 
@@ -2016,23 +2117,45 @@ package body Machine is
       return False;
    end Is_Breakpoint;
 
-   function Monitor_Peek (Addr : Word) return Byte is (Peek (Addr));
+   function Monitor_Peek (Addr : Word) return Byte is
+     (if Parasite_Debug then Tube.Parasite_Peek (Addr) else Peek (Addr));
 
    procedure Monitor_Poke (Addr : Word; Value : Byte) is
    begin
-      Poke (Addr, Value);
+      if Parasite_Debug then
+         Tube.Parasite_Poke (Addr, Value);
+      else
+         Poke (Addr, Value);
+      end if;
    end Monitor_Poke;
 
-   function Flags_Text return String is
-      function F (B : Boolean; C : Character) return Character is
-        (if B then C else '.');
+   function Flags_Text (P : Byte) return String is
+      function F (Bit : Byte; C : Character) return Character is
+        (if (P and Bit) /= 0 then C else '.');
    begin
-      return F (CPU.Flag_N, 'N') & F (CPU.Flag_V, 'V') & "-B" &
-        F (CPU.Flag_D, 'D') & F (CPU.Flag_I, 'I') & F (CPU.Flag_Z, 'Z') &
-        F (CPU.Flag_C, 'C');
+      return F (16#80#, 'N') & F (16#40#, 'V') & "-B" &
+        F (16#08#, 'D') & F (16#04#, 'I') & F (16#02#, 'Z') &
+        F (16#01#, 'C');
    end Flags_Text;
 
+   function Flags_Text return String is (Flags_Text (CPU.Get_P));
+
+   function Host_Register_Text return String;
+
    function Register_Text return String is
+   begin
+      if Parasite_Debug then
+         return "PC=" & Disasm.Hex4 (Tube.Parasite_PC) &
+           " A=" & Disasm.Hex2 (Tube.Parasite_A) &
+           " X=" & Disasm.Hex2 (Tube.Parasite_X) &
+           " Y=" & Disasm.Hex2 (Tube.Parasite_Y) &
+           " SP=" & Disasm.Hex2 (Tube.Parasite_SP) & " " &
+           Flags_Text (Tube.Parasite_P) & " (Second Processor)";
+      end if;
+      return Host_Register_Text;
+   end Register_Text;
+
+   function Host_Register_Text return String is
    begin
       return "PC=" & Disasm.Hex4 (CPU.PC) & " A=" & Disasm.Hex2 (CPU.A) &
         " X=" & Disasm.Hex2 (CPU.X) & " Y=" & Disasm.Hex2 (CPU.Y) &
@@ -2040,18 +2163,23 @@ package body Machine is
         " ROM=" & Disasm.Hex2 (Byte (ROMSEL)) &
         (if Has_1770 then " ACCCON=" & Disasm.Hex2 (ACCCON) &
            (if ANDY then " ANDY" else "") else "");
-   end Register_Text;
+   end Host_Register_Text;
 
-   function CPU_PC return Word is (CPU.PC);
+   function CPU_PC return Word is
+     (if Parasite_Debug then Tube.Parasite_PC else CPU.PC);
 
    procedure Monitor_Set_PC (Addr : Word) is
    begin
-      CPU.PC := Addr;
+      if Parasite_Debug then
+         Tube.Set_Parasite_PC (Addr);
+      else
+         CPU.PC := Addr;
+      end if;
    end Monitor_Set_PC;
 
    function Debug_Info return String is
    begin
-      return Register_Text & " IC32=" & Disasm.Hex2 (IC32) &
+      return Host_Register_Text & " IC32=" & Disasm.Hex2 (IC32) &
         " SysVIA IFR=" & Disasm.Hex2 (Sys_VIA.IFR) &
         " IER=" & Disasm.Hex2 (Sys_VIA.IER) &
         " PCR=" & Disasm.Hex2 (Sys_VIA.PCR) &
@@ -2170,6 +2298,7 @@ package body Machine is
          return;
       end if;
       Break_Key (Keyboard.Break_Down);
+      Update_Tube_Hooks;
       loop
          if CRTC.Frame_Done then
             --  ignore VSYNCs of an unprogrammed / tiny CRTC frame
@@ -2182,7 +2311,7 @@ package body Machine is
                Stop (Paused);
                return;
             end if;
-            if not Skip_Break then
+            if not Skip_Break and then not Parasite_Debug then
                if BP_Count > 0 and then At_Breakpoint then
                   Stop (Breakpoint);
                   return;
@@ -2195,18 +2324,24 @@ package body Machine is
                end if;
             end if;
             Skip_Break := False;
-            if Out_Active then
+            if Out_Active and then not Parasite_Debug then
                Op := Peek (CPU.PC);
             end if;
          end if;
          Executed := Step_System;
+         if Tube.Halted then
+            Stop (P_Reason);
+            return;
+         end if;
          if Executed and then (Basic_BP_Count > 0 or else Basic_Stepping)
-           and then Basic_Check
+           and then not Tube_On and then Basic_Check
          then
             Stop (Basic_Line);
             return;
          end if;
-         if Executed and then (Watch_Hit or else Out_Active) then
+         if Executed and then not Parasite_Debug
+           and then (Watch_Hit or else Out_Active)
+         then
             if Watch_Hit then
                Watch_Hit := False;
                Stop (if Watch_Write_Hit then Watch_Write else Watch_Read);
@@ -2223,7 +2358,28 @@ package body Machine is
    end Run_Frame;
 
    procedure Step_Instruction is
+      Dummy : Boolean;
    begin
+      if Parasite_Debug then
+         --  run the host until the parasite has done one instruction
+         P_Step := True;
+         Update_Tube_Hooks;
+         Tube.Resume;
+         for I in 1 .. 1_000_000 loop
+            Dummy := Step_System;
+            if CRTC.Frame_Done then
+               CRTC.Frame_Done := False;
+               End_Of_Frame;
+            end if;
+            exit when Tube.Halted;
+         end loop;
+         P_Step := False;
+         Watch_Hit := False;
+         Skip_Break := True;
+         Reason := Step_Done;
+         return;
+      end if;
+      Tube.Resume;
       loop
          exit when Step_System;
       end loop;
@@ -2238,6 +2394,16 @@ package body Machine is
 
    procedure Step_Over is
    begin
+      if Parasite_Debug then
+         if Tube.Parasite_Peek (Tube.Parasite_PC) = 16#20# then
+            Temp_Addr := Integer (Tube.Parasite_PC + 3);
+            Temp_SP := Tube.Parasite_SP;
+            Resume;
+         else
+            Step_Instruction;
+         end if;
+         return;
+      end if;
       if Peek (CPU.PC) = 16#20# then
          Temp_Addr := Integer (CPU.PC + 3);
          Temp_SP := CPU.SP;

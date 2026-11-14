@@ -86,6 +86,8 @@ with Interfaces; use Interfaces;
 
 package body Forge is
 
+   use type Machine.Debug_CPU_Type;
+
 
    ---------------------------------------------------------------------
    --  Widgets and state
@@ -1349,7 +1351,8 @@ package body Forge is
       A_Undo, A_Redo, A_Close,
       A_Build, A_Run, A_Rebuild_Run, A_Disk, A_Disk_Run, A_Disk_Edit,
       A_Pause, A_Step_Into, A_Step_Over,
-      A_Step_Out, A_Run_To_Cursor, A_Toggle_BP, A_Clear_BPs, A_Reset,
+      A_Step_Out, A_Run_To_Cursor, A_Toggle_BP, A_Clear_BPs, A_Switch_CPU,
+      A_Reset,
       A_Emulator, A_Charset, A_Screen, A_Bitmap,
       A_Help);
 
@@ -1385,7 +1388,7 @@ package body Forge is
          when A_Fetch_Basic =>
             declare
                Text : constant String :=
-                 Basic.Detokenize (Machine.Peek'Access,
+                 Basic.Detokenize (Machine.Program_Peek'Access,
                                    Basic.Load_Address (Dialect), Dialect);
             begin
                if Text = "" then
@@ -1564,6 +1567,18 @@ package body Forge is
             Machine.Clear_Breakpoints;
             Machine.Clear_Watches;
             Update_Watches;
+         when A_Switch_CPU =>
+            if not Machine.Tube_Active then
+               Print ("there is no 6502 Second Processor (Machine menu)");
+            else
+               Machine.Set_Debug_CPU
+                 (if Machine.Debug_CPU = Machine.Parasite_CPU
+                  then Machine.Host_CPU else Machine.Parasite_CPU);
+               Print ("debugging the " &
+                      (if Machine.Debug_CPU = Machine.Parasite_CPU
+                       then "6502 Second Processor" else "host"));
+               Update_Panels;
+            end if;
          when A_Reset =>
             if Stopped then
                Machine.Resume;
@@ -1877,6 +1892,7 @@ package body Forge is
       Separator (M);
       Item (M, "Toggle _breakpoint", A_Toggle_BP, GDK_F9);
       Item (M, "Clear all breakpoints and watches", A_Clear_BPs);
+      Item (M, "Switch _processor (host / Second Processor)", A_Switch_CPU);
       Separator (M);
       Item (M, "_Reset machine", A_Reset);
       Item (M, "Show _emulator", A_Emulator, GDK_F12);
@@ -2076,7 +2092,7 @@ package body Forge is
    --  Highlight the BASIC line being executed (from BASIC's text pointer)
    procedure Track_Basic_Line is
       N  : constant Integer :=
-        Basic.Current_Line (Machine.Peek'Access, Basic.Program_Load);
+        Basic.Current_Line (Machine.Program_Peek'Access, Basic.Program_Load);
       T  : constant Natural := Find_Tab (To_String (Basic_File));
    begin
       if N = Basic_Line or else T = 0 then

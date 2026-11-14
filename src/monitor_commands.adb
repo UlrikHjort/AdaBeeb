@@ -32,6 +32,8 @@ with Disasm;
 
 package body Monitor_Commands is
 
+   use type Machine.Debug_CPU_Type;
+
    Next_Dis  : Word := 0;
    Next_Mem  : Word := 0;
 
@@ -241,11 +243,29 @@ package body Monitor_Commands is
             Machine.Resume;
             Resume_Requested := True;
 
+         elsif C = "cpu" or else C = "host" or else C = "tube" then
+            if C = "tube" and then not Machine.Tube_Active then
+               Print ("?no 6502 Second Processor (Machine menu or --tube)");
+            else
+               if C /= "cpu" then
+                  Machine.Set_Debug_CPU
+                    (if C = "tube" then Machine.Parasite_CPU
+                     else Machine.Host_CPU);
+                  Changed;
+               end if;
+               Print ("debugging the " &
+                      (if Machine.Debug_CPU = Machine.Parasite_CPU
+                       then "Second Processor (tube)" else "host (host)"));
+               Show_Registers;
+            end if;
+
          elsif C = "h" or else C = "?" or else C = "help" then
             Print ("r regs | z [n] step | d [addr] disasm | m [a [b]] memory" &
                    " | > addr bytes | g [addr] go | x exit");
             Print ("b addr break | bd [addr] delete | bl list |" &
                    " w [a [b]] watch (none = clear) | io chip state");
+            Print ("host / tube debug the host or the 6502 Second" &
+                   " Processor | cpu which one");
 
          elsif C /= "" then
             Print ("?unknown command (h for help)");

@@ -32,6 +32,8 @@ with Interfaces; use Interfaces;
 with Machine; use Machine;
 with Asm;
 with Basic;
+with Tube;
+with Disasm;
 
 procedure Debug_Test is
    Failures : Natural := 0;
@@ -62,11 +64,21 @@ procedure Debug_Test is
       end loop;
    end Run_Until_Stop;
 
-begin
-   Asm.Assemble ("tests/debug_test.asm");
-   Check (not Asm.Has_Errors and then Asm.Has_Output, "assembled");
+   --  The whole suite on the host, or (With_Tube) on the 6502 Second
+   --  Processor, where BASIC and the injected program run
+   procedure Suite (With_Tube : Boolean) is
+      Tag : constant String := (if With_Tube then "tube: " else "");
+
+      procedure Check (Cond : Boolean; What : String) is
+      begin
+         Debug_Test.Check (Cond, Tag & What);
+      end Check;
+   begin
+   Tube.Enabled := With_Tube;
    Power_On (Model_B, "roms", Ok);
-   Check (Ok, "power on");
+   Check (Ok and then Tube_Active = With_Tube, "power on");
+   Check (Debug_CPU = (if With_Tube then Parasite_CPU else Host_CPU),
+          "debugging the " & Debug_CPU'Image);
    declare
       Data : Byte_Array (0 .. Natural (Asm.High_Address - Asm.Low_Address));
    begin
@@ -74,7 +86,10 @@ begin
          Data (I) := Asm.Output_Byte (Asm.Low_Address + Word (I));
       end loop;
       Set_Breakpoint (Addr ("main"));
-      Inject_And_Run (Data, Asm.Low_Address, "RUN");
+      Inject_And_Run (Data, Asm.Low_Address,
+                      (if With_Tube
+                       then "CALL &" & Disasm.Hex4 (Asm.Start_Address)
+                       else "RUN"));
    end;
    Run_Until_Stop (600);
    Check (Break_Hit and then CPU_PC = Addr ("main"), "breakpoint at main");
@@ -116,7 +131,8 @@ begin
       Run_Frame;
    end loop;
    Check (not Break_Hit and then CPU_PC = Addr ("done")
-          and then Peek (16#70#) = 3, "program finished (counter = 3)");
+          and then Program_Peek (16#70#) = 3,
+          "program finished (counter = 3)");
 
    --  BASIC line breakpoints and stepping
    Clear_Breakpoints;
@@ -152,8 +168,15 @@ begin
    for F in 1 .. 50 loop
       Run_Frame;
    end loop;
-   Check (not Break_Hit and then Peek (16#0404#) = 3,
+   Check (not Break_Hit and then Program_Peek (16#0404#) = 3,
           "BASIC program finished (A% = 3)");
+   end Suite;
+
+begin
+   Asm.Assemble ("tests/debug_test.asm");
+   Check (not Asm.Has_Errors and then Asm.Has_Output, "assembled");
+   Suite (With_Tube => False);
+   Suite (With_Tube => True);
 
    if Failures > 0 then
       Put_Line (Failures'Image & " FAILED");

@@ -124,7 +124,21 @@ package Machine is
    procedure Save_Snapshot (Path : String; Ok : out Boolean);
    procedure Load_Snapshot (Path : String; Ok : out Boolean);
 
+   function Program_Peek (Addr : Word) return Byte;
+   procedure Program_Poke (Addr : Word; Value : Byte);
+   --  The memory BASIC and started programs run in: the Second
+   --  Processor's when the Tube is on, else the host's (as Peek / Poke).
+
    --  Debugger
+   type Debug_CPU_Type is (Host_CPU, Parasite_CPU);
+   procedure Set_Debug_CPU (C : Debug_CPU_Type);
+   function Debug_CPU return Debug_CPU_Type;
+   --  Which processor the debugger works on (breakpoints, watches,
+   --  stepping, registers, monitor memory).  Parasite_CPU only takes
+   --  effect while the 6502 Second Processor is on; it is chosen
+   --  automatically when the machine starts with the Tube.
+   function Tube_Active return Boolean;
+
    procedure Step_Instruction;
    procedure Step_Over;
    procedure Step_Out;

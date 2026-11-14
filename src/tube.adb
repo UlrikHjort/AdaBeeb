@@ -64,6 +64,8 @@ package body Tube is
    ROM_In : Boolean := True;
    P_IRQ, P_NMI, P_NMI_Prev : Boolean := False;
    Credit : Integer := 0;            --  parasite cycles owed
+   Is_Halted : Boolean := False;     --  stopped by a debugger hook
+   Skip_Before : Boolean := False;
 
    procedure Update_Interrupts is
    begin
@@ -93,6 +95,9 @@ package body Tube is
 
    function P_Read (Addr : Word) return Byte is
    begin
+      if On_Access /= null then
+         On_Access (Addr, False);
+      end if;
       if (Addr and 16#FFF8#) = 16#FEF8# then
          return Parasite_Register_Read (Natural (Addr and 7));
       elsif ROM_In and then Addr >= 16#F000# then
@@ -103,6 +108,9 @@ package body Tube is
 
    procedure P_Write (Addr : Word; Value : Byte) is
    begin
+      if On_Access /= null then
+         On_Access (Addr, True);
+      end if;
       if (Addr and 16#FFF8#) = 16#FEF8# then
          Parasite_Register_Write (Natural (Addr and 7), Value);
       else
@@ -119,6 +127,7 @@ package body Tube is
       CPU.Reset;
       Credit := 0;
       P_NMI_Prev := False;
+      Is_Halted := False;
    end Reset_Parasite;
 
    procedure Reset is
@@ -333,17 +342,63 @@ package body Tube is
       if not Enabled or else not Have_ROM then
          return;
       end if;
+      if Is_Halted then
+         return;
+      end if;
       Credit := Credit + Host_Cycles * 3;
       while Credit > 0 loop
+         if Before /= null then
+            if not Skip_Before and then Before (CPU.PC, CPU.SP) then
+               Is_Halted := True;
+               Credit := 0;
+               return;
+            end if;
+            Skip_Before := False;
+         end if;
          CPU.IRQ_Line := P_IRQ;
          if P_NMI and then not P_NMI_Prev then
             CPU.NMI_Pending := True;
          end if;
          P_NMI_Prev := P_NMI;
-         CPU.Step (N);
-         Credit := Credit - Integer (N) * 2;
+         if After /= null then
+            declare
+               Op : constant Byte := Parasite_Peek (CPU.PC);
+            begin
+               CPU.Step (N);
+               Credit := Credit - Integer (N) * 2;
+               if After (Op) then
+                  Is_Halted := True;
+                  Credit := 0;
+                  return;
+               end if;
+            end;
+         else
+            CPU.Step (N);
+            Credit := Credit - Integer (N) * 2;
+         end if;
       end loop;
    end Run;
+
+   function Halted return Boolean is (Is_Halted);
+
+   procedure Resume is
+   begin
+      if Is_Halted then
+         Is_Halted := False;
+         Skip_Before := True;
+      end if;
+   end Resume;
+
+   function Parasite_A return Byte is (CPU.A);
+   function Parasite_X return Byte is (CPU.X);
+   function Parasite_Y return Byte is (CPU.Y);
+   function Parasite_SP return Byte is (CPU.SP);
+   function Parasite_P return Byte is (CPU.Get_P);
+
+   procedure Set_Parasite_PC (Addr : Word) is
+   begin
+      CPU.PC := Addr;
+   end Set_Parasite_PC;
 
    ---------------------------------------------------------------------
    --  Snapshots
