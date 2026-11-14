@@ -31,7 +31,7 @@ with Interfaces; use Interfaces;
 
 package body Disc_Image is
 
-   Image_Size : constant := 2 * Max_Tracks * Sectors_Per_Track * Sector_Size;
+   Image_Size : constant := 2 * Max_Tracks * ADFS_Sectors * Sector_Size;
    type Image_Data is array (0 .. Image_Size - 1) of Byte;
    type Image_Access is access Image_Data;
 
@@ -41,6 +41,7 @@ package body Disc_Image is
       RO       : Boolean := False;
       Dirty    : Boolean := False;
       Double   : Boolean := False;
+      SPT      : Natural := Sectors_Per_Track;
       Num_Tracks : Natural := 0;
       File     : Unbounded_String;
    end record;
@@ -50,8 +51,8 @@ package body Disc_Image is
    function Offset (D : Drive_Number; Side : Side_Number;
                     Track, Sector : Natural) return Natural is
      (if Drives (D).Double
-      then ((Track * 2 + Side) * Sectors_Per_Track + Sector) * Sector_Size
-      else (Track * Sectors_Per_Track + Sector) * Sector_Size);
+      then ((Track * 2 + Side) * Drives (D).SPT + Sector) * Sector_Size
+      else (Track * Drives (D).SPT + Sector) * Sector_Size);
 
    procedure Attach (D : Drive_Number; Path : String; Ok : out Boolean) is
       use Ada.Streams.Stream_IO;
@@ -82,10 +83,13 @@ package body Disc_Image is
          end loop;
       end;
       Close (F);
-      Drives (D).Double := Ext = "dsd";
+      Drives (D).Double := Ext = "dsd" or else Ext = "adl";
+      Drives (D).SPT :=
+        (if Ext = "adf" or else Ext = "adl" then ADFS_Sectors
+         else Sectors_Per_Track);
       declare
          Per_Track : constant Natural :=
-           Sectors_Per_Track * Sector_Size *
+           Drives (D).SPT * Sector_Size *
            (if Drives (D).Double then 2 else 1);
       begin
          Drives (D).Num_Tracks :=
@@ -119,7 +123,7 @@ package body Disc_Image is
       use Ada.Streams.Stream_IO;
       F : File_Type;
       Per_Track : constant Natural :=
-        Sectors_Per_Track * Sector_Size *
+        Drives (D).SPT * Sector_Size *
         (if Drives (D).Double then 2 else 1);
       Size : constant Natural := Drives (D).Num_Tracks * Per_Track;
    begin
@@ -161,6 +165,10 @@ package body Disc_Image is
      (if Drives (D).Double then 2 else 1);
    function Tracks (D : Drive_Number) return Natural is
      (Drives (D).Num_Tracks);
+   function Track_Sectors (D : Drive_Number) return Natural is
+     (Drives (D).SPT);
+   function Is_ADFS (D : Drive_Number) return Boolean is
+     (Drives (D).SPT = ADFS_Sectors);
    function Path (D : Drive_Number) return String is
      (To_String (Drives (D).File));
    function Name (D : Drive_Number) return String is
@@ -171,7 +179,7 @@ package body Disc_Image is
    function Has_Sector (D : Drive_Number; Side : Side_Number;
                         Track, Sector : Natural) return Boolean is
      (Drives (D).Is_Present and then Track < Drives (D).Num_Tracks
-      and then Sector < Sectors_Per_Track
+      and then Sector < Drives (D).SPT
       and then (Side = 0 or else Drives (D).Double));
 
    function Get (D : Drive_Number; Side : Side_Number;
@@ -204,7 +212,7 @@ package body Disc_Image is
          if Track >= Drives (D).Num_Tracks then
             Drives (D).Num_Tracks := Max_Tracks;
          end if;
-         for S in 0 .. Sectors_Per_Track - 1 loop
+         for S in 0 .. Drives (D).SPT - 1 loop
             for I in 0 .. Sector_Size - 1 loop
                Put (D, Side, Track, S, I, 16#E5#);
             end loop;

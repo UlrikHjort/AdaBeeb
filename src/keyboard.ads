@@ -50,6 +50,9 @@ package Keyboard is
    --  start-up links (the Master keeps its options in CMOS RAM).
 
    Hold_Shift : Boolean := False;
+   Hold_Key   : Integer := -1;
+   --  Another key held by the emulator (internal key number), e.g. A for
+   --  the Master's SHIFT+A+BREAK ADFS boot.
    --  SHIFT held down by the emulator (autostart: SHIFT+BREAK boot).
 
    Caps_LED : Boolean := True;    --  set by Machine from the latch

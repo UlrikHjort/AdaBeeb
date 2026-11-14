@@ -66,6 +66,8 @@ package body Machine is
 
    Current_Model : Model_Type := Model_B;
    function Master return Boolean is (Current_Model = Master_128);
+   function B_Plus return Boolean is (Current_Model = Model_B_Plus);
+   function Has_1770 return Boolean is (Current_Model /= Model_B);
 
    --  Master 128 paging: RAM (16#8000# .. 16#8FFF#) is ANDY (ROMSEL bit 7),
    --  RAM (16#9000# .. 16#AFFF#) is HAZEL (ACCCON bit 3, at &C000) and
@@ -92,8 +94,13 @@ package body Machine is
    IC32 : Byte := 0;               --  addressable latch
    VIA_Phase : Natural := 0;       --  1 MHz clock divider
 
+   --  The display shows the shadow RAM: ACCCON bit 0 (Master), bit 7 (B+)
+   function Shadow_Display return Boolean is
+     (if Master then (ACCCON and 1) /= 0
+      elsif B_Plus then (ACCCON and 16#80#) /= 0 else False);
+
    function Screen_Read (Addr : Natural) return Byte is
-     (if (ACCCON and 1) /= 0 and then Addr mod 16#8000# >= 16#3000#
+     (if Shadow_Display and then Addr mod 16#8000# >= 16#3000#
       then RAM (16#8000# + Addr mod 16#8000#)
       else RAM (Addr mod 16#8000#));
    pragma Inline (Screen_Read);
@@ -427,6 +434,14 @@ package body Machine is
          Slow_Access;
       end if;
       Take_Sample_Here;
+      if B_Plus then
+         case Addr is
+            when 16#FE80# .. 16#FE83# => return 16#FE#;
+            when 16#FE84# .. 16#FE87# => return WD1770.Read (Reg mod 4);
+            when 16#FE88# .. 16#FE9F# => return 16#FE#;
+            when others => null;
+         end case;
+      end if;
       if Master then
          case Addr is
             when 16#FE18# .. 16#FE1F# =>
@@ -484,6 +499,25 @@ package body Machine is
          Slow_Access;
       end if;
       Take_Sample_Here;
+      if B_Plus then
+         case Addr is
+            when 16#FE30# .. 16#FE33# =>
+               ROMSEL := Natural (Value and 15);
+               ANDY := (Value and 16#80#) /= 0;    --  12K private RAM
+               return;
+            when 16#FE34# .. 16#FE37# =>
+               ACCCON := Value;
+               return;
+            when 16#FE80# .. 16#FE83# =>
+               WD1770.Write_Control_Acorn (Value);
+               return;
+            when 16#FE84# .. 16#FE87# =>
+               WD1770.Write (Reg mod 4, Value);
+               return;
+            when 16#FE88# .. 16#FE9F# => return;
+            when others => null;
+         end case;
+      end if;
       if Master then
          case Addr is
             when 16#FE18# .. 16#FE1F# =>
@@ -597,6 +631,57 @@ package body Machine is
       end case;
    end Master_Write;
 
+   --  B+: 12K private RAM at &8000-&AFFF (ROMSEL bit 7, kept in
+   --  RAM (16#8000# .. 16#AFFF#)) and the shadow RAM for the VDU code at
+   --  &C000-&DFFF (and private RAM code at &A000-&AFFF) when ACCCON bit 7
+   function BPlus_Shadow_For_CPU return Boolean is
+     ((ACCCON and 16#80#) /= 0
+      and then (Instr_PC in 16#C000# .. 16#DFFF#
+                or else (ANDY and then Instr_PC in 16#A000# .. 16#AFFF#)));
+
+   function BPlus_Read (Addr : Word; IO : Boolean) return Byte is
+   begin
+      case Addr is
+         when 16#0000# .. 16#2FFF# => return RAM (Natural (Addr));
+         when 16#3000# .. 16#7FFF# =>
+            return (if BPlus_Shadow_For_CPU
+                    then RAM (16#8000# + Natural (Addr))
+                    else RAM (Natural (Addr)));
+         when 16#8000# .. 16#AFFF# =>
+            return (if ANDY then RAM (Natural (Addr))
+                    else Banks (ROMSEL) (Natural (Addr - 16#8000#)));
+         when 16#B000# .. 16#BFFF# =>
+            return Banks (ROMSEL) (Natural (Addr - 16#8000#));
+         when 16#FC00# .. 16#FEFF# =>
+            return (if IO then IO_Read (Addr) else 16#FF#);
+         when others => return OS (Natural (Addr - 16#C000#));
+      end case;
+   end BPlus_Read;
+
+   procedure BPlus_Write (Addr : Word; Value : Byte; IO : Boolean) is
+   begin
+      case Addr is
+         when 16#0000# .. 16#2FFF# => RAM (Natural (Addr)) := Value;
+         when 16#3000# .. 16#7FFF# =>
+            if BPlus_Shadow_For_CPU then
+               RAM (16#8000# + Natural (Addr)) := Value;
+            else
+               RAM (Natural (Addr)) := Value;
+            end if;
+         when 16#8000# .. 16#BFFF# =>
+            if ANDY and then Addr < 16#B000# then
+               RAM (Natural (Addr)) := Value;
+            elsif Bank_Is_RAM (ROMSEL) then
+               Banks (ROMSEL) (Natural (Addr - 16#8000#)) := Value;
+            end if;
+         when 16#FC00# .. 16#FEFF# =>
+            if IO then
+               IO_Write (Addr, Value);
+            end if;
+         when others => null;
+      end case;
+   end BPlus_Write;
+
    function Bus_Read (Addr : Word) return Byte is
       Index : constant Natural := Instr_Access;
    begin
@@ -613,6 +698,8 @@ package body Machine is
       end if;
       if Master then
          return Master_Read (Addr, True);
+      elsif B_Plus then
+         return BPlus_Read (Addr, True);
       end if;
       if Addr < 16#8000# then
          return RAM (Natural (Addr));
@@ -638,6 +725,9 @@ package body Machine is
       end if;
       if Master then
          Master_Write (Addr, Value, True);
+         return;
+      elsif B_Plus then
+         BPlus_Write (Addr, Value, True);
          return;
       end if;
       if Addr < 16#8000# then
@@ -686,7 +776,7 @@ package body Machine is
       Total_Cycles := Total_Cycles + Long_Long_Integer (N);
       CRTC.Tick (N);
       Sound.Clock (N);
-      if Master then
+      if Has_1770 then
          WD1770.Tick (N);
       else
          FDC8271.Tick (N);
@@ -826,6 +916,7 @@ package body Machine is
       Tape.Reset;
       Keyboard.Release_All;
       Keyboard.Hold_Shift := False;
+      Keyboard.Hold_Key := -1;
       Frames := 0;
       CPU.Reset;
       CPU.Jammed := False;
@@ -930,11 +1021,15 @@ package body Machine is
          end;
       else
       declare
-         OS_Path : constant String := Find_File (ROM_Dir, "os12.rom");
+         OS_Path : constant String :=
+           Find_File (ROM_Dir, (if M = Model_B_Plus then "bpos.rom"
+                                else "os12.rom"));
          Basic_Path : constant String := Find_File (ROM_Dir, "basic2.rom");
       begin
          if OS_Path = "" then
-            Err := To_Unbounded_String ("os12.rom not found in " & ROM_Dir);
+            Err := To_Unbounded_String
+              ((if M = Model_B_Plus then "bpos.rom" else "os12.rom") &
+               " not found in " & ROM_Dir);
             return;
          end if;
          Read_File (OS_Path, OS, Got);
@@ -946,7 +1041,9 @@ package body Machine is
             Load_Sideways_ROM (15, Basic_Path, R_Ok);
          end if;
          declare
-            DFS : constant String := Find_File (ROM_Dir, "dnfs120.rom");
+            DFS : constant String :=
+              Find_File (ROM_Dir, (if M = Model_B_Plus then "dfs226.rom"
+                                   else "dnfs120.rom"));
          begin
             if DFS /= "" then
                Load_Sideways_ROM (14, DFS, R_Ok);
@@ -985,6 +1082,8 @@ package body Machine is
    begin
       if Master then
          return Master_Read (Addr, False);
+      elsif B_Plus then
+         return BPlus_Read (Addr, False);
       end if;
       if Addr < 16#8000# then
          return RAM (Natural (Addr));
@@ -1001,6 +1100,9 @@ package body Machine is
    begin
       if Master then
          Master_Write (Addr, Value, False);
+         return;
+      elsif B_Plus then
+         BPlus_Write (Addr, Value, False);
          return;
       end if;
       if Addr < 16#8000# then
@@ -1019,7 +1121,7 @@ package body Machine is
    procedure Screen_Poke (Addr : Word; Value : Byte) is
       A : constant Natural := Natural (Addr) mod 16#8000#;
    begin
-      if (ACCCON and 1) /= 0 and then A >= 16#3000# then
+      if Shadow_Display and then A >= 16#3000# then
          RAM (16#8000# + A) := Value;
       else
          RAM (A) := Value;
@@ -1228,7 +1330,22 @@ package body Machine is
         (Ada.Directories.Extension (Path));
    begin
       Ok := False;
-      if Ext = "ssd" or else Ext = "dsd" then
+      if Ext = "adf" or else Ext = "adl" then
+         if not Master then
+            Err := To_Unbounded_String
+              ("ADFS discs need the BBC Master 128 (Machine menu or --master)");
+            return;
+         end if;
+         Attach (Path, Ok);
+         if not Ok then
+            return;
+         end if;
+         Reset;
+         Keyboard.Hold_Shift := True;            --  SHIFT+A+BREAK:
+         Keyboard.Hold_Key := 16#41#;            --  boot from ADFS
+         Shift_Frames := 150;
+         Auto := Idle;
+      elsif Ext = "ssd" or else Ext = "dsd" then
          Attach (Path, Ok);
          if not Ok then
             return;
@@ -1236,7 +1353,8 @@ package body Machine is
          Reset;
          if Disc_Image.Boot_Option (0) /= 0 then
             Keyboard.Hold_Shift := True;      --  SHIFT+BREAK
-            Shift_Frames := (if Master then 150 else 60);
+            Shift_Frames := (if Master then 150 elsif B_Plus then 100
+                             else 60);
             Auto := Idle;
          else
             --  no boot option: run the first file
@@ -1347,7 +1465,7 @@ package body Machine is
      (Disc_Image.Name (Disc_Image.Drive_Number (Drive mod 2)));
 
    function Drive_LED return Boolean is
-     (if Master then WD1770.Motor_On else FDC8271.Motor_On);
+     (if Has_1770 then WD1770.Motor_On else FDC8271.Motor_On);
 
    procedure Create_Disc (Path : String; Ok : out Boolean) is
       Base : constant String := Ada.Directories.Base_Name (Path);
@@ -1727,7 +1845,7 @@ package body Machine is
         " X=" & Disasm.Hex2 (CPU.X) & " Y=" & Disasm.Hex2 (CPU.Y) &
         " SP=" & Disasm.Hex2 (CPU.SP) & " " & Flags_Text &
         " ROM=" & Disasm.Hex2 (Byte (ROMSEL)) &
-        (if Master then " ACCCON=" & Disasm.Hex2 (ACCCON) &
+        (if Has_1770 then " ACCCON=" & Disasm.Hex2 (ACCCON) &
            (if ANDY then " ANDY" else "") else "");
    end Register_Text;
 
@@ -1766,7 +1884,7 @@ package body Machine is
    NMI_Prev : Boolean := False;
 
    function NMI_Line return Boolean is
-     (if Master then WD1770.NMI else FDC8271.INT);
+     (if Has_1770 then WD1770.NMI else FDC8271.INT);
 
    procedure End_Of_Frame is
    begin
@@ -1776,6 +1894,7 @@ package body Machine is
          Shift_Frames := Shift_Frames - 1;
          if Shift_Frames = 0 then
             Keyboard.Hold_Shift := False;
+            Keyboard.Hold_Key := -1;
          end if;
       end if;
       Frames := Frames + 1;

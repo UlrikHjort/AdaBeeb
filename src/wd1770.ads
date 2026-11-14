@@ -36,6 +36,9 @@ package WD1770 is
 
    procedure Reset;
    procedure Write_Control (Value : Byte);
+   procedure Write_Control_Acorn (Value : Byte);
+   --  The B+'s latch at &FE80 (bits 0-1 drive, 2 side, 3 single density,
+   --  5 reset low)
    function Read (Reg : Natural) return Byte;       --  0 .. 3
    procedure Write (Reg : Natural; Value : Byte);
    procedure Tick (Cycles : Natural);

@@ -25,7 +25,8 @@
 --  AdaBeeb - a BBC Micro emulator written in Ada with GtkAda.
 --
 --  Usage: adabeeb [options] [file.ssd|file.dsd|file.uef|file.bas|...]
---    --master / --b     BBC Master 128 / Model B (default: last used, B)
+--    --master / --bplus / --b   BBC Master 128 / Model B+ / Model B
+--                       (default: last used, Model B)
 --    --roms DIR         ROM directory (default: roms/ next to the program)
 --    --rom N=FILE       load a sideways ROM into slot N (0-15)
 --    --swram N          make slot N sideways RAM
@@ -240,8 +241,9 @@ begin
             return (if I <= Argument_Count then Argument (I) else "");
          end Next;
       begin
-         if A = "--master" or else A = "--b" then
+         if A = "--master" or else A = "--b" or else A = "--bplus" then
             Model := (if A = "--master" then Machine.Master_128
+                      elsif A = "--bplus" then Machine.Model_B_Plus
                       else Machine.Model_B);
             Model_Given := True;
          elsif A = "--roms" then

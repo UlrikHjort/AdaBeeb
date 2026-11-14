@@ -523,14 +523,21 @@ package body Keyboard is
       if R = 0 and then Col = 0 and then Hold_Shift then
          return True;
       end if;
+      if Hold_Key >= 0 and then Hold_Key = R * 16 + Col then
+         return True;
+      end if;
       return (Matrix (Col) and Shift_Left (1, R)) /= 0;
    end Key_Down;
 
    function Column_Active (Col : Column) return Boolean is
-     ((Matrix (Col) and 16#FE#) /= 0);
+     ((Matrix (Col) and 16#FE#) /= 0
+      or else (Hold_Key >= 16 and then Hold_Key mod 16 = Col));
 
    function Any_Key return Boolean is
    begin
+      if Hold_Key >= 16 then
+         return True;
+      end if;
       for C in 0 .. (if Master then 12 else 9) loop
          if (Matrix (C) and 16#FE#) /= 0 then
             return True;

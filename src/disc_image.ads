@@ -22,16 +22,17 @@
 -- OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 -- WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 -- ***************************************************************************
---  Acorn DFS disc images: .ssd (single sided) and .dsd (double sided,
---  tracks interleaved side 0 / side 1), 10 sectors of 256 bytes per
---  track, 40 or 80 tracks.  Images are held in memory and written back
+--  Disc images: Acorn DFS .ssd (single sided) and .dsd (double sided,
+--  tracks interleaved side 0 / side 1) with 10 sectors of 256 bytes per
+--  track, 40 or 80 tracks; ADFS .adf / .adl with 16 sectors per track.  Images are held in memory and written back
 --  to the file after every write command.
 
 with Types; use Types;
 
 package Disc_Image is
 
-   Sectors_Per_Track : constant := 10;
+   Sectors_Per_Track : constant := 10;      --  DFS (single density)
+   ADFS_Sectors      : constant := 16;      --  ADFS (double density)
    Sector_Size       : constant := 256;
    Max_Tracks        : constant := 80;
 
@@ -46,6 +47,10 @@ package Disc_Image is
    function Read_Only (D : Drive_Number) return Boolean;
    function Sides (D : Drive_Number) return Natural;
    function Tracks (D : Drive_Number) return Natural;
+   function Track_Sectors (D : Drive_Number) return Natural;   --  10 / 16
+   function Is_ADFS (D : Drive_Number) return Boolean;
+   --  .adf (single-sided) and .adl (double-sided, tracks interleaved)
+   --  images: 16 sectors of 256 bytes per track, double density
    function Name (D : Drive_Number) return String;   --  file name
    function Path (D : Drive_Number) return String;
 

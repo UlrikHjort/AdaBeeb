@@ -29,7 +29,7 @@ with Types; use Types;
 
 package Machine is
 
-   type Model_Type is (Model_B, Master_128);
+   type Model_Type is (Model_B, Model_B_Plus, Master_128);
 
    procedure Power_On (M : Model_Type; ROM_Dir : String; Ok : out Boolean);
    --  Load the ROM set for the model and perform a power-on reset.

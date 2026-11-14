@@ -1,6 +1,6 @@
 # AdaBeeb
 
-A BBC Micro (Model B and Master 128) emulator written in Ada 2012 with
+A BBC Micro (Model B, Model B+ and Master 128) emulator written in Ada 2012 with
 GtkAda, with **Forge**: a 6502 assembler IDE, BBC BASIC editor,
 source-level debugger and graphics editors around the running machine.
 It is the BBC sibling of AdaC64 (`../c64`).
@@ -11,7 +11,8 @@ It is the BBC sibling of AdaC64 (`../c64`).
                              # libgtksourceview-4 (Forge's editor)
     bin/adabeeb              # Model B (or the model used last time)
     bin/adabeeb --master     # BBC Master 128
-    bin/adabeeb game.ssd     # autostart (also .dsd .uef .bas .asm)
+    bin/adabeeb --bplus      # BBC Model B+ (64K, shadow RAM, 1770)
+    bin/adabeeb game.ssd     # autostart (also .dsd .adf .adl .uef .bas .asm)
     bin/adabeeb-forge        # Forge as the main window
     make tests               # CPU, debugger, bitmap/ULA and BASIC tests
     make b2tests             # b2's real-hardware VIA / timing tests (slow)
@@ -48,6 +49,8 @@ these:
 | `os12.rom` | 16 KB | Acorn MOS 1.20 (the Model B operating system, &C000-&FFFF) | Model B (required) |
 | `basic2.rom` | 16 KB | BBC BASIC II, loaded into sideways slot 15 | Model B (without it the machine starts without a language) |
 | `dnfs120.rom` | 16 KB | Acorn DNFS 1.20 (DFS 1.20 for the 8271 disc controller), slot 14 | Model B discs (without it: tape only, PAGE = &E00) |
+| `bpos.rom` | 16 KB | Acorn OS 2.00 for the Model B+ | Model B+ (required) |
+| `dfs226.rom` | 16 KB | Acorn 1770 DFS, slot 14 on the B+ | Model B+ discs |
 | `mos320.rom` | 128 KB | Master 128 MOS 3.20: the 16 KB MOS followed by the seven internal ROMs for slots 9-15 (DFS, ADFS, BASIC IV, View, ...) in that order | Master 128 (required) |
 | `saa5050.fnt` | 46 KB | SAA5050 teletext character shapes in the B-Em "BEMTTX01" font format | optional: without it mode 7 is drawn with characters made from the OS font |
 
@@ -85,9 +88,10 @@ Notes:
 | Keyboard | Full matrix, start-up links, BREAK / SHIFT+BREAK / CTRL+BREAK; Master numeric keypad. |
 | 8271 FDC | Model B: commands used by DFS (read/write/verify/format/seek/read ID/special registers), byte-timed NMIs. |
 | WD1770 | Master: drive control latch at &FE24, type I-IV commands. |
-| Discs | SSD / DSD images, two drives, written back after every write; read-only files are write-protected discs. |
+| Discs | SSD / DSD (DFS) and ADF / ADL (ADFS, double density) images, two drives, written back after every write; read-only files are write-protected discs. |
 | Tape | UEF (gzip or plain) through the 6850 ACIA and serial ULA, motor control, warp while the motor runs; what is SAVEd to tape can be stored as a UEF. |
 | ADC | uPD7002, joystick from the keypad or a host game controller, fire buttons. |
+| Model B+ | 64K: 20K shadow RAM (ACCCON bit 7, MODE 128-135), 12K private RAM, 1770 at &FE80, OS 2.00. |
 | Master 128 | 128 KB: shadow RAM (LYNNE), ANDY, HAZEL, sideways RAM 4-7, ACCCON / ROMSEL, CMOS RAM and real-time clock (kept in `~/.config/adabeeb/cmos.bin`). |
 
 Snapshots (Machine menu, Alt+S / Alt+L quick save/load) hold the whole

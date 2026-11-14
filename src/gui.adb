@@ -95,7 +95,7 @@ package body GUI is
    Item_Pause   : Gtk_Check_Menu_Item;
    Item_Fast_Tape : Gtk_Check_Menu_Item;
    Item_SWRAM : Gtk_Check_Menu_Item;
-   Item_B, Item_Master : Gtk_Radio_Menu_Item;
+   Item_B, Item_B_Plus, Item_Master : Gtk_Radio_Menu_Item;
    Updating_Menu : Boolean := False;
 
    Start_Time   : Time := Clock;
@@ -125,6 +125,7 @@ package body GUI is
    function Model_Name return String is
      (case Machine.Model is
         when Model_B => "BBC Model B",
+        when Model_B_Plus => "BBC Model B+",
         when Master_128 => "BBC Master 128");
 
    function Short (S : String) return String is
@@ -158,11 +159,11 @@ package body GUI is
       Item_Pause.Set_Active (Paused);
       Item_Fast_Tape.Set_Active (Machine.Fast_Tape);
       Item_SWRAM.Set_Active (Machine.Model_B_SWRAM);
-      if Machine.Model = Model_B then
-         Item_B.Set_Active (True);
-      else
-         Item_Master.Set_Active (True);
-      end if;
+      case Machine.Model is
+         when Model_B => Item_B.Set_Active (True);
+         when Model_B_Plus => Item_B_Plus.Set_Active (True);
+         when Master_128 => Item_Master.Set_Active (True);
+      end case;
       Updating_Menu := False;
       Update_Status;
    end Sync_Menu;
@@ -290,8 +291,8 @@ package body GUI is
    end Choose_File;
 
    All_Types : constant Ext_List :=
-     ("ssd", "dsd", "uef", "bas", "asm", "rom");
-   Disc_Types : constant Ext_List := ("ssd", "dsd");
+     ("ssd", "dsd", "adf", "adl", "uef", "bas", "asm", "rom");
+   Disc_Types : constant Ext_List := ("ssd", "dsd", "adf", "adl");
 
    procedure Do_Autostart (Path : String) is
       Ok : Boolean;
@@ -332,21 +333,21 @@ package body GUI is
    begin
       Do_Autostart (Choose_File ("Autostart disc / tape / program",
                                  All_Types,
-                                 "BBC files (ssd, dsd, uef, bas, asm)"));
+                                 "BBC files (ssd, dsd, adf, adl, uef, bas, asm)"));
    end On_Autostart;
 
    procedure On_Attach0 (Item : access Gtk_Menu_Item_Record'Class) is
       pragma Unreferenced (Item);
    begin
       Do_Attach (Choose_File ("Insert disc in drive 0", Disc_Types,
-                              "Disc images (ssd, dsd)"), 0);
+                              "Disc images (ssd, dsd, adf, adl)"), 0);
    end On_Attach0;
 
    procedure On_Attach1 (Item : access Gtk_Menu_Item_Record'Class) is
       pragma Unreferenced (Item);
    begin
       Do_Attach (Choose_File ("Insert disc in drive 1", Disc_Types,
-                              "Disc images (ssd, dsd)"), 1);
+                              "Disc images (ssd, dsd, adf, adl)"), 1);
    end On_Attach1;
 
    procedure On_Detach0 (Item : access Gtk_Menu_Item_Record'Class) is
@@ -586,8 +587,10 @@ package body GUI is
 
    procedure Save_Settings is
    begin
-      Settings.Set ("model", (if Machine.Model = Master_128 then "master"
-                              else "b"));
+      Settings.Set ("model", (case Machine.Model is
+                                 when Master_128 => "master",
+                                 when Model_B_Plus => "bplus",
+                                 when Model_B => "b"));
       Settings.Set ("joyport", Integer (Keyboard.Joystick_Port));
       Settings.Set ("joykeys",
                     (if Keyboard.Joystick_Keys = Keyboard.Keypad
@@ -637,6 +640,10 @@ package body GUI is
         and then Machine.Model /= Model_B
       then
          Start_Machine (Model_B);
+      elsif Gtk_Radio_Menu_Item (Item) = Item_B_Plus
+        and then Machine.Model /= Model_B_Plus
+      then
+         Start_Machine (Model_B_Plus);
       elsif Gtk_Radio_Menu_Item (Item) = Item_Master
         and then Machine.Model /= Master_128
       then
@@ -1107,6 +1114,8 @@ package body GUI is
       M_Machine := Add_Menu (Bar, "_Machine");
       Add_Radio (M_Machine, "BBC Model B", Model_Group, Item_B,
                  On_Model'Access);
+      Add_Radio (M_Machine, "BBC Model B+", Model_Group, Item_B_Plus,
+                 On_Model'Access);
       Add_Radio (M_Machine, "BBC Master 128", Model_Group, Item_Master,
                  On_Model'Access);
       Add_Separator (M_Machine);
@@ -1228,10 +1237,17 @@ package body GUI is
       Item_CRT.Set_Active (Video.Scanlines);
       Updating_Menu := False;
 
-      if not Model_Given and then Settings.Get ("model", "b") = "master"
-        and then Model /= Master_128
-      then
-         Start_Machine (Master_128);
+      if not Model_Given then
+         declare
+            Saved : constant String := Settings.Get ("model", "b");
+            Want : constant Model_Type :=
+              (if Saved = "master" then Master_128
+               elsif Saved = "bplus" then Model_B_Plus else Model_B);
+         begin
+            if Want /= Model then
+               Start_Machine (Want);
+            end if;
+         end;
       end if;
       if Attach /= "" then
          Do_Attach (Attach, 0);

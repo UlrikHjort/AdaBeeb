@@ -36,7 +36,8 @@ package body WD1770 is
    S_WP    : constant Byte := 16#40#;
    S_Motor : constant Byte := 16#80#;
 
-   Byte_Time : constant := 128;          --  FM: 64 us per byte
+   --  64 us per byte in single density (FM), 32 us in double (MFM)
+   function Byte_Time return Integer;
 
    Status, Track_Reg, Sector_Reg, Data_Reg, Command : Byte := 0;
    Control : Byte := 0;
@@ -77,7 +78,27 @@ package body WD1770 is
    end Reset;
 
    function NMI return Boolean is (INTRQ or else DRQ);
+
+   function Byte_Time return Integer is
+     (if (Control and 16#20#) /= 0 then 128 else 64);
    function Motor_On return Boolean is (Motor_Count > 0);
+
+   procedure Write_Control_Acorn (Value : Byte) is
+      --  B+ / Acorn 1770 board at &FE80: bits 0-1 drive, 2 side,
+      --  3 single density, 5 reset (low); mapped onto the Master's layout
+      M : Byte := Value and 3;
+   begin
+      if (Value and 16#20#) /= 0 then
+         M := M or 4;
+      end if;
+      if (Value and 4) /= 0 then
+         M := M or 16#10#;
+      end if;
+      if (Value and 8) /= 0 then
+         M := M or 16#20#;
+      end if;
+      Write_Control (M);
+   end Write_Control_Acorn;
 
    procedure Write_Control (Value : Byte) is
    begin
@@ -321,7 +342,8 @@ package body WD1770 is
                case Pos is
                   when 0 => Data_Reg := Byte (Head_Track (Drive) mod 256);
                   when 1 => Data_Reg := Byte (Side);
-                  when 2 => Data_Reg := Byte (Index_Count mod 10);
+                  when 2 =>
+                     Data_Reg := Byte (Index_Count mod Track_Sectors (D));
                   when 3 => Data_Reg := 1;
                   when others => Data_Reg := 0;
                end case;
