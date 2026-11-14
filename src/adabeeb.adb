@@ -31,6 +31,7 @@
 --    --rom N=FILE       load a sideways ROM into slot N (0-15)
 --    --swram N          make slot N sideways RAM
 --    --no-swram         Model B without its default sideways RAM (4-7)
+--    --tube             connect a 6502 Second Processor
 --    --links HEX        keyboard links (start-up options), default 00
 --    --attach FILE      insert a disc image in drive 0 without booting
 --    --headless N       run N frames without GUI, then save a screenshot
@@ -65,6 +66,7 @@ with Wav_Sink;
 with GUI;
 with Basic;
 with Disc_Image;
+with Tube;
 with Asm;
 
 procedure AdaBeeb is
@@ -260,6 +262,8 @@ begin
                      To_Unbounded_String (S (Eq + 1 .. S'Last)));
                end if;
             end;
+         elsif A = "--tube" then
+            Tube.Enabled := True;
          elsif A = "--no-swram" then
             Machine.Model_B_SWRAM := False;
          elsif A = "--swram" then

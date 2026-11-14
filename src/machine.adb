@@ -43,6 +43,7 @@ with Ada.Calendar.Time_Zones;
 with Ada.Environment_Variables;
 with Disc_Image;
 with Tape;
+with Tube;
 with Asm;
 with Basic;
 
@@ -471,6 +472,9 @@ package body Machine is
             return VIA.Read (User_VIA, Reg mod 16);
          when 16#FE80# .. 16#FE9F# =>
             return FDC8271.Read (Reg mod 8);
+         when 16#FEE0# .. 16#FEFF# =>
+            return (if Tube.Enabled and then Tube.ROM_Loaded
+                    then Tube.Host_Read (Reg mod 8) else 16#FE#);
          when 16#FEC0# .. 16#FEDF# =>
             case Reg mod 4 is
                when 0 => return ADC_Status;
@@ -561,6 +565,10 @@ package body Machine is
             VIA.Write (User_VIA, Reg mod 16, Value);
          when 16#FE80# .. 16#FE9F# =>
             FDC8271.Write (Reg mod 8, Value);
+         when 16#FEE0# .. 16#FEFF# =>
+            if Tube.Enabled and then Tube.ROM_Loaded then
+               Tube.Host_Write (Reg mod 8, Value);
+            end if;
          when 16#FEC0# .. 16#FEDF# =>
             if Reg mod 4 = 0 then
                ADC_Status := (Value and 16#0F#) or 16#80#;
@@ -782,6 +790,9 @@ package body Machine is
          FDC8271.Tick (N);
       end if;
       Tape.Tick (N);
+      if Tube.Enabled then
+         Tube.Run (N);
+      end if;
       Ticks_1MHz := (VIA_Phase + N) / 2;
       VIA_Phase := (VIA_Phase + N) mod 2;
       if Ticks_1MHz > 0 then
@@ -923,6 +934,7 @@ package body Machine is
       ADC_Time := 0;
       FDC8271.Reset;
       WD1770.Reset;
+      Tube.Reset;
       ACCCON := 0;
       ANDY := False;
       Tape.Reset;
@@ -942,6 +954,7 @@ package body Machine is
          null;                 --  held: the CPU stays in reset
       elsif not Down and then Break_Was_Down then
          CPU.Reset;            --  released: the CPU restarts
+         Tube.Reset;           --  the Tube's reset follows the host's
          CPU.Jammed := False;
       end if;
       Break_Was_Down := Down;
@@ -1067,6 +1080,21 @@ package body Machine is
             Set_Sideways_RAM (S, True);
          end loop;
       end if;
+      end if;
+      if Tube.Enabled then
+         declare
+            P : constant String := Find_File (ROM_Dir, "6502tube.rom");
+            T_Ok : Boolean := False;
+         begin
+            if P /= "" then
+               Tube.Load_ROM (P, T_Ok);
+            end if;
+            if not T_Ok then
+               Err := To_Unbounded_String
+                 ("6502tube.rom not found: second processor disabled");
+               Tube.Enabled := False;
+            end if;
+         end;
       end if;
       declare
          Font : constant String := Find_File (ROM_Dir, "saa5050.fnt");
@@ -2047,7 +2075,8 @@ package body Machine is
    end End_Of_Frame;
 
 
-   function IRQ_Now return Boolean is (VIA_IRQ_Out or else Tape.IRQ);
+   function IRQ_Now return Boolean is
+     (VIA_IRQ_Out or else Tape.IRQ or else Tube.Host_IRQ);
 
    function Step_System return Boolean is
       N : Natural;

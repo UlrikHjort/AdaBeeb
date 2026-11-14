@@ -74,6 +74,7 @@ with Monitor;
 with Forge;
 with Settings;
 with Rom_Dialog;
+with Tube;
 with Host_Joystick;
 with Disasm;
 
@@ -96,6 +97,7 @@ package body GUI is
    Item_Pause   : Gtk_Check_Menu_Item;
    Item_Fast_Tape : Gtk_Check_Menu_Item;
    Item_SWRAM : Gtk_Check_Menu_Item;
+   Item_Tube : Gtk_Check_Menu_Item;
    Item_B, Item_B_Plus, Item_Master : Gtk_Radio_Menu_Item;
    Updating_Menu : Boolean := False;
 
@@ -138,7 +140,7 @@ package body GUI is
       T  : constant String := Machine.Tape_Name;
    begin
       Status.Set_Text
-        (Model_Name &
+        (Model_Name & (if Tube.Enabled then " + Tube" else "") &
          "  |  drive 0: " & (if D0 = "" then "-" else Short (D0)) &
          (if D1 /= "" then "  drive 1: " & Short (D1) else "") &
          (if Machine.Drive_LED then " [*]" else " [ ]") &
@@ -160,6 +162,7 @@ package body GUI is
       Item_Pause.Set_Active (Paused);
       Item_Fast_Tape.Set_Active (Machine.Fast_Tape);
       Item_SWRAM.Set_Active (Machine.Model_B_SWRAM);
+      Item_Tube.Set_Active (Tube.Enabled);
       case Machine.Model is
          when Model_B => Item_B.Set_Active (True);
          when Model_B_Plus => Item_B_Plus.Set_Active (True);
@@ -440,6 +443,15 @@ package body GUI is
       end if;
    end On_Fast_Tape;
 
+   procedure On_Tube (Item : access Gtk_Check_Menu_Item_Record'Class) is
+   begin
+      if not Updating_Menu then
+         Tube.Enabled := Item.Get_Active;
+         Start_Machine (Machine.Model);    --  a power-on with or without
+         Sync_Menu;
+      end if;
+   end On_Tube;
+
    procedure On_SWRAM (Item : access Gtk_Check_Menu_Item_Record'Class) is
    begin
       if not Updating_Menu then
@@ -589,6 +601,7 @@ package body GUI is
       Settings.Set ("crt", Video.Scanlines);
       Settings.Set ("fasttape", Machine.Fast_Tape);
       Settings.Set ("swram", Machine.Model_B_SWRAM);
+      Settings.Set ("tube", Tube.Enabled);
       Settings.Set ("lastdir", To_String (Last_Dir));
       declare
          W, H : Gint;
@@ -1062,6 +1075,9 @@ package body GUI is
       Video.Scanlines := Settings.Get ("crt", False);
       Machine.Fast_Tape := Settings.Get ("fasttape", True);
       Machine.Model_B_SWRAM := Settings.Get ("swram", True);
+      if not Tube.Enabled then          --  --tube on the command line wins
+         Tube.Enabled := Settings.Get ("tube", False);
+      end if;
       Last_Dir := To_Unbounded_String (Settings.Get ("lastdir", ""));
 
       Gtk_New (Win);
@@ -1113,6 +1129,8 @@ package body GUI is
       Add_Item (M_Machine, "Sideways ROMs and RAM...", On_ROM_List'Access);
       Add_Check (M_Machine, "Model B: sideways RAM in slots 4-7",
                  Item_SWRAM, On_SWRAM'Access);
+      Add_Check (M_Machine, "6502 Second Processor (Tube)",
+                 Item_Tube, On_Tube'Access);
       Add_Separator (M_Machine);
       Add_Item (M_Machine, "Save _snapshot...", On_Save_Snapshot'Access);
       Add_Item (M_Machine, "_Load snapshot...", On_Load_Snapshot'Access);
@@ -1236,6 +1254,9 @@ package body GUI is
                Start_Machine (Want);
             end if;
          end;
+      end if;
+      if Tube.Enabled and then not Tube.ROM_Loaded then
+         Start_Machine (Machine.Model);    --  load the Tube's ROM
       end if;
       Rom_Dialog.Apply_Saved;      --  the slots chosen last time
       Machine.Reset;
