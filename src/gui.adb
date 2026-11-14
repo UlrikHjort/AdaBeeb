@@ -73,6 +73,7 @@ with Video;
 with Monitor;
 with Forge;
 with Settings;
+with Rom_Dialog;
 with Host_Joystick;
 with Disasm;
 
@@ -175,6 +176,8 @@ package body GUI is
       if not Ok then
          Message ("Could not load ROMs:" & ASCII.LF & Machine.Error_Message);
       end if;
+      Rom_Dialog.Apply_Saved;
+      Machine.Reset;
       Keyboard.Release_All;
    end Start_Machine;
 
@@ -343,6 +346,14 @@ package body GUI is
                               "Disc images (ssd, dsd, adf, adl)"), 0);
    end On_Attach0;
 
+   procedure On_Boot (Item : access Gtk_Menu_Item_Record'Class) is
+      pragma Unreferenced (Item);
+   begin
+      Keyboard.Release_All;
+      Machine.Boot_Disc;
+      Sync_Menu;
+   end On_Boot;
+
    procedure On_Attach1 (Item : access Gtk_Menu_Item_Record'Class) is
       pragma Unreferenced (Item);
    begin
@@ -439,44 +450,17 @@ package body GUI is
       end if;
    end On_SWRAM;
 
-   procedure On_Load_ROM (Item : access Gtk_Menu_Item_Record'Class) is
-      pragma Unreferenced (Item);
-      Path : constant String :=
-        Choose_File ("Load a sideways ROM (into the highest free slot)",
-                     (1 => "rom"), "ROM images (rom)");
-      Ok : Boolean := False;
-   begin
-      if Path /= "" then
-         for Slot in reverse 0 .. 15 loop
-            if Machine.ROM_Title (Slot) = "" then
-               Machine.Load_Sideways_ROM (Slot, Path, Ok);
-               if Ok then
-                  Machine.Reset;
-                  Message ("Loaded into slot" & Slot'Image &
-                           "; the machine was reset.");
-               end if;
-               exit;
-            end if;
-         end loop;
-         if not Ok then
-            Message ("Could not load " & Path);
-         end if;
-      end if;
-   end On_Load_ROM;
 
    procedure On_ROM_List (Item : access Gtk_Menu_Item_Record'Class) is
       pragma Unreferenced (Item);
-      R : Unbounded_String;
+      Changed : Boolean;
    begin
-      for Slot in reverse 0 .. 15 loop
-         declare
-            T : constant String := Machine.ROM_Title (Slot);
-         begin
-            Append (R, "Slot" & Slot'Image & ": " &
-                    (if T = "" then "-" else T) & ASCII.LF);
-         end;
-      end loop;
-      Message (To_String (R));
+      Keyboard.Release_All;
+      Rom_Dialog.Run (Win, Changed);
+      if Changed then
+         Machine.Reset;
+         Sync_Menu;
+      end if;
    end On_ROM_List;
 
    procedure On_Save_Snapshot (Item : access Gtk_Menu_Item_Record'Class) is
@@ -722,7 +706,8 @@ package body GUI is
       Message
         (Keyboard.Keys_Help & ASCII.LF & ASCII.LF &
          "Emulator keys: F11 warp, Alt+Enter fullscreen," & ASCII.LF &
-         "  Alt+A autostart, Alt+D insert disc, Alt+R power-on reset," &
+         "  Alt+A autostart, Alt+D insert disc, Alt+B boot the disc," &
+         ASCII.LF & "  Alt+R power-on reset," &
          ASCII.LF &
          "  Alt+M monitor, Alt+S / Alt+L quick save / load," & ASCII.LF &
          "  Ctrl+Shift+V paste text.");
@@ -791,6 +776,9 @@ package body GUI is
          elsif Is_Char ('a') then
             Keyboard.Release_All;
             On_Autostart (null);
+            return True;
+         elsif Is_Char ('b') then
+            On_Boot (null);
             return True;
          elsif Is_Char ('d') then
             Keyboard.Release_All;
@@ -1099,6 +1087,7 @@ package body GUI is
       Add_Item (M_File, "Insert disc in drive _0... (Alt+D)",
                 On_Attach0'Access);
       Add_Item (M_File, "Insert disc in drive _1...", On_Attach1'Access);
+      Add_Item (M_File, "_Boot the disc in drive 0 (Alt+B)", On_Boot'Access);
       Add_Item (M_File, "Eject drive 0", On_Detach0'Access);
       Add_Item (M_File, "Eject drive 1", On_Detach1'Access);
       Add_Item (M_File, "_New blank disc image...", On_New_Disc'Access);
@@ -1121,8 +1110,7 @@ package body GUI is
       Add_Separator (M_Machine);
       Add_Item (M_Machine, "Power-on _reset (Alt+R)", On_Reset'Access);
       Add_Separator (M_Machine);
-      Add_Item (M_Machine, "Sideways ROMs", On_ROM_List'Access);
-      Add_Item (M_Machine, "Load sideways ROM...", On_Load_ROM'Access);
+      Add_Item (M_Machine, "Sideways ROMs and RAM...", On_ROM_List'Access);
       Add_Check (M_Machine, "Model B: sideways RAM in slots 4-7",
                  Item_SWRAM, On_SWRAM'Access);
       Add_Separator (M_Machine);
@@ -1249,6 +1237,8 @@ package body GUI is
             end if;
          end;
       end if;
+      Rom_Dialog.Apply_Saved;      --  the slots chosen last time
+      Machine.Reset;
       if Attach /= "" then
          Do_Attach (Attach, 0);
       end if;

@@ -63,9 +63,10 @@ Notes:
 
 * The DFS must be one for the **8271** (DFS 0.90, 1.20, DNFS). DFS 2.x is
   the Master's 1770 version and does not work in a Model B.
-* More sideways ROMs (16 KB images) can be loaded with `--rom N=FILE`
-  (slot 0-15) or Machine -> Load sideways ROM; `--swram N` makes a slot
-  sideways RAM. On the Master, slots 4-7 are sideways RAM already.
+* More sideways ROMs (16 KB images) go in with Machine -> Sideways ROMs
+  and RAM (a ROM file, RAM or empty per slot, remembered per model) or
+  `--rom N=FILE` / `--swram N` on the command line. Slots 4-7 are
+  sideways RAM by default on the Model B (switchable) and the Master.
 * The Master keeps its configuration (`*CONFIGURE`) and clock in CMOS
   RAM, stored in `~/.config/adabeeb/cmos.bin`; delete that file to get
   the defaults back (DFS and BASIC, MODE 7).
@@ -104,7 +105,7 @@ Symbolic mapping by default (type the character you mean; Input menu:
 positional). F1-F9 = f1-f9, F10 = f0, F12 / Pause = BREAK, End / Insert /
 Home = COPY, Caps Lock = CAPS LOCK, Page Up = SHIFT LOCK, ` = £.
 Emulator: F11 warp, Alt+Enter fullscreen, Alt+A autostart, Alt+D insert
-disc, Alt+R power-on reset, Alt+M monitor, Alt+S / Alt+L quick snapshot,
+disc, Alt+B boot the disc in drive 0 (SHIFT+BREAK), Alt+R power-on reset, Alt+M monitor, Alt+S / Alt+L quick snapshot,
 Ctrl+Shift+V paste text.
 
 ## Forge

@@ -898,6 +898,18 @@ package body Machine is
 
    function Current_ROM_Bank return Natural is (ROMSEL);
 
+   function Slot_Is_RAM (Slot : Natural) return Boolean is
+     (Slot <= 15 and then Bank_Is_RAM (Slot));
+
+   procedure Clear_Slot (Slot : Natural) is
+   begin
+      if Slot <= 15 then
+         Banks (Slot) := (others => 16#FF#);
+         Bank_Used (Slot) := False;
+         Bank_Is_RAM (Slot) := False;
+      end if;
+   end Clear_Slot;
+
    procedure Reset is
    begin
       RAM := (others => 0);
@@ -1324,6 +1336,19 @@ package body Machine is
          Auto := Inject;
       end if;
    end Inject_And_Run;
+
+   procedure Boot_Disc is
+   begin
+      Reset;
+      Keyboard.Hold_Shift := True;
+      if Master and then Disc_Image.Present (0)
+        and then Disc_Image.Is_ADFS (0)
+      then
+         Keyboard.Hold_Key := 16#41#;          --  A: ADFS
+      end if;
+      Shift_Frames := (if Master then 150 elsif B_Plus then 100 else 60);
+      Auto := Idle;
+   end Boot_Disc;
 
    procedure Autostart (Path : String; Ok : out Boolean) is
       Ext : constant String := Ada.Characters.Handling.To_Lower

@@ -60,6 +60,10 @@ package Machine is
    --  Attach the image/file, reset, and boot / run it.
    function Autostart_Busy return Boolean;
 
+   procedure Boot_Disc;
+   --  Reset with SHIFT held (SHIFT+BREAK; SHIFT+A+BREAK for an ADFS disc
+   --  on the Master): boots the disc in drive 0 by its boot option.
+
    function Frame_Count return Natural;
    function Peek (Addr : Word) return Byte;     --  CPU view, no side effects
    procedure Poke (Addr : Word; Value : Byte);  --  main RAM
@@ -90,6 +94,9 @@ package Machine is
    --  Give the Model B sideways RAM in slots 4-7 at power-on (as most
    --  expanded machines had; the Master always has it).
    function ROM_Title (Slot : Natural) return String;   --  "" = empty
+   function Slot_Is_RAM (Slot : Natural) return Boolean;
+   procedure Clear_Slot (Slot : Natural);
+   --  Empty a sideways slot (no ROM, no RAM)
    function Current_ROM_Bank return Natural;
 
    --  Discs (drive 0 / 1)
