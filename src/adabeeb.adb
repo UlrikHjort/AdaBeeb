@@ -32,6 +32,7 @@
 --    --swram N          make slot N sideways RAM
 --    --no-swram         Model B without its default sideways RAM (4-7)
 --    --tube             connect a 6502 Second Processor
+--    --speech           fit the speech upgrade (TMS5220, Model B / B+)
 --    --links HEX        keyboard links (start-up options), default 00
 --    --attach FILE      insert a disc image in drive 0 without booting
 --    --headless N       run N frames without GUI, then save a screenshot
@@ -67,6 +68,7 @@ with GUI;
 with Basic;
 with Disc_Image;
 with Tube;
+with Speech;
 with Asm;
 
 procedure AdaBeeb is
@@ -265,6 +267,8 @@ begin
             end;
          elsif A = "--tube" then
             Tube.Enabled := True;
+         elsif A = "--speech" then
+            Speech.Enabled := True;
          elsif A = "--no-swram" then
             Machine.Model_B_SWRAM := False;
          elsif A = "--swram" then

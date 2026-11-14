@@ -44,6 +44,7 @@ with Ada.Environment_Variables;
 with Disc_Image;
 with Tape;
 with Tube;
+with Speech;
 with Asm;
 with Basic;
 
@@ -93,6 +94,8 @@ package body Machine is
 
    Sys_VIA, User_VIA : VIA.Chip;
    IC32 : Byte := 0;               --  addressable latch
+   Speech_On : Boolean := False;   --  speech upgrade fitted and working
+   Speech_Data : Byte := 16#FF#;   --  what the speech chip drives
    VIA_Phase : Natural := 0;       --  1 MHz clock divider
 
    --  The display shows the shadow RAM: ACCCON bit 0 (Master), bit 7 (B+)
@@ -192,6 +195,9 @@ package body Machine is
          Sys_VIA.Port_A_In := S;
       end if;
       Sys_VIA.Port_A_In := Sys_VIA.Port_A_In and CMOS_Bus;
+      if Speech_On and then (IC32 and 2) = 0 then
+         Sys_VIA.Port_A_In := Sys_VIA.Port_A_In and Speech_Data;
+      end if;
    end Update_Sys_Port_A_Pins;
 
    procedure Update_Sys_Port_B_Pins is
@@ -202,6 +208,16 @@ package body Machine is
       end if;
       if (Keyboard.Joy2 and 16#10#) /= 0 then
          V := V and not 16#20#;
+      end if;
+      if Speech_On then
+         --  PB7 = READY, PB6 = interrupt (both active low); without the
+         --  chip they are pulled high, which is how the OS knows
+         if Speech.Ready then
+            V := V and not 16#80#;
+         end if;
+         if Speech.Interrupt then
+            V := V and not 16#40#;
+         end if;
       end if;
       Sys_VIA.Port_B_In := V;
    end Update_Sys_Port_B_Pins;
@@ -275,6 +291,14 @@ package body Machine is
       if (Old and 1) /= 0 and then (IC32 and 1) = 0 then
          Sound.Write (SDB_Out);           --  sound write enable went low
       end if;
+      if Speech_On then
+         if (Old and 4) /= 0 and then (IC32 and 4) = 0 then
+            Speech.Write (SDB_Out);        --  speech write select
+         end if;
+         if (Old and 2) /= 0 and then (IC32 and 2) = 0 then
+            Speech_Data := Speech.Read;    --  speech read select
+         end if;
+      end if;
       CRTC.Screen_Size := Natural (Shift_Right (IC32, 4) and 3);
       Keyboard.Caps_LED := (IC32 and 16#40#) = 0;
       if Master then
@@ -298,6 +322,7 @@ package body Machine is
 
    function Tube_On return Boolean is (Tube.Enabled and then Tube.ROM_Loaded);
    function Tube_Active return Boolean is (Tube_On);
+   function Speech_Active return Boolean is (Speech_On);
 
    Parasite_Debug : Boolean := False;    --  debugging the parasite
 
@@ -806,6 +831,9 @@ package body Machine is
       if Tube.Enabled then
          Tube.Run (N);
       end if;
+      if Speech_On then
+         Speech.Clock (N);
+      end if;
       Ticks_1MHz := (VIA_Phase + N) / 2;
       VIA_Phase := (VIA_Phase + N) mod 2;
       if Ticks_1MHz > 0 then
@@ -1110,6 +1138,26 @@ package body Machine is
          end;
       end if;
       Set_Debug_CPU (if Tube_On then Parasite_CPU else Host_CPU);
+      Speech_On := False;
+      Sound.Extra := null;
+      if Speech.Enabled and then not Master then
+         declare
+            P : constant String := Find_File (ROM_Dir, "phroma.rom");
+            S_Ok : Boolean := False;
+         begin
+            if P /= "" then
+               Speech.Load_PHROM (15, P, S_Ok);
+            end if;
+            if S_Ok then
+               Speech_On := True;
+               Speech.Reset;
+               Sound.Extra := Speech.Output'Access;
+            else
+               Err := To_Unbounded_String
+                 ("phroma.rom not found: speech disabled");
+            end if;
+         end;
+      end if;
       declare
          Font : constant String := Find_File (ROM_Dir, "saa5050.fnt");
       begin

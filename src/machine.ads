@@ -138,6 +138,8 @@ package Machine is
    --  effect while the 6502 Second Processor is on; it is chosen
    --  automatically when the machine starts with the Tube.
    function Tube_Active return Boolean;
+   function Speech_Active return Boolean;
+   --  The speech upgrade is fitted and its PHROM loaded (Model B / B+).
 
    procedure Step_Instruction;
    procedure Step_Over;

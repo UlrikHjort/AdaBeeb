@@ -43,6 +43,10 @@ package Sound is
    type Sink_Proc is access procedure (S : Sample);
    Sink : Sink_Proc := null;
 
+   type Extra_Source is access function return Float;
+   Extra : Extra_Source := null;
+   --  Another sound source mixed into the output (the speech chip).
+
    procedure Reset;
    procedure Write (Value : Byte);
 

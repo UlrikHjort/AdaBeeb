@@ -179,6 +179,9 @@ package body Sound is
                begin
                   DC := DC + (Avg - DC) * 0.0015;
                   Out_V := (Avg - DC) * 1.2;
+                  if Extra /= null then
+                     Out_V := Out_V + Extra.all;
+                  end if;
                   Out_V := Float'Max (-32767.0, Float'Min (32767.0, Out_V));
                   if Sink /= null then
                      Sink (Sample (Integer (Out_V)));

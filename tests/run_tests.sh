@@ -25,4 +25,25 @@ if echo "$out" | grep -q "^ *4321 *$"; then
 else
   echo "FAIL tube snapshot"; fail=1
 fi
+# Speech: SOUND -1 speaks a PHROM word (needs roms/phroma.rom)
+if [ -f roms/phroma.rom ]; then
+  w=$(mktemp --suffix=.wav)
+  loud() {
+    bin/adabeeb --b $1 --headless 300 --type-at 150 'SOUND -1,148,0,0\n' --wav "$w" > /dev/null 2>&1
+    python3 -I -c "
+import wave,struct,sys
+f=wave.open(sys.argv[1]); n=f.getnframes(); r=f.getframerate()
+d=struct.unpack('<%dh'%n,f.readframes(n))[int(3.5*r):]
+print(max(abs(x) for x in d) if d else 0)" "$w"
+  }
+  with=$(loud --speech); without=$(loud "")
+  rm -f "$w"
+  if [ "$with" -gt 2000 ] && [ "$without" -lt 100 ]; then
+    echo "ok   speech: SOUND -1 speaks a PHROM word (peak $with, $without without the chip)"
+  else
+    echo "FAIL speech (peak $with with the chip, $without without)"; fail=1
+  fi
+else
+  echo "skip speech: roms/phroma.rom not present"
+fi
 exit $fail
