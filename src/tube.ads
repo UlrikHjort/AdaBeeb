@@ -43,7 +43,18 @@ with Types; use Types;
 package Tube is
 
    Enabled : Boolean := False;
-   --  A 6502 Second Processor is connected (takes effect at power-on).
+   --  A Second Processor is connected (takes effect at power-on).
+
+   type Parasite_Type is (CPU_6502, CPU_Z80);
+   Kind : Parasite_Type := CPU_6502;
+   --  Which one: the 6502 Second Processor (65C02, 3 MHz, 2 KB ROM at
+   --  &F000 until it reads R1's status) or the Z80 Second Processor (Z80,
+   --  6 MHz, 4 KB ROM at &0000 until it fetches an instruction at &8000
+   --  or above, back in for each NMI; the Tube registers are its I/O
+   --  ports 0-7).
+
+   function ROM_Name return String is
+     (if Kind = CPU_Z80 then "z80tube.rom" else "6502tube.rom");
 
    procedure Load_ROM (Path : String; Ok : out Boolean);
    function ROM_Loaded return Boolean;
@@ -60,7 +71,8 @@ package Tube is
 
    procedure Save_State (S : access Ada.Streams.Root_Stream_Type'Class);
    procedure Load_State (S : access Ada.Streams.Root_Stream_Type'Class);
-   --  The ULA, the parasite's CPU and its 64 KB (not the ROM image).
+   --  The ULA, the parasite's CPU and its 64 KB (not the ROM image), for
+   --  the current Kind (the snapshot header records which).
 
    function Parasite_PC return Word;
    function Parasite_Peek (Addr : Word) return Byte;

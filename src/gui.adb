@@ -81,6 +81,8 @@ with Disasm;
 
 package body GUI is
 
+   use type Tube.Parasite_Type;
+
    Win      : Gtk_Window;
    Bar      : Gtk_Menu_Bar;
    Is_Fullscreen : Boolean := False;
@@ -99,6 +101,7 @@ package body GUI is
    Item_Fast_Tape : Gtk_Check_Menu_Item;
    Item_SWRAM : Gtk_Check_Menu_Item;
    Item_Tube : Gtk_Check_Menu_Item;
+   Item_Z80 : Gtk_Check_Menu_Item;
    Item_Speech : Gtk_Check_Menu_Item;
    Item_B, Item_B_Plus, Item_Master : Gtk_Radio_Menu_Item;
    Updating_Menu : Boolean := False;
@@ -142,7 +145,9 @@ package body GUI is
       T  : constant String := Machine.Tape_Name;
    begin
       Status.Set_Text
-        (Model_Name & (if Tube.Enabled then " + Tube" else "") &
+        (Model_Name &
+         (if not Tube.Enabled then ""
+          elsif Tube.Kind = Tube.CPU_Z80 then " + Z80" else " + Tube") &
          (if Machine.Speech_Active then " + Speech" else "") &
          "  |  drive 0: " & (if D0 = "" then "-" else Short (D0)) &
          (if D1 /= "" then "  drive 1: " & Short (D1) else "") &
@@ -165,7 +170,8 @@ package body GUI is
       Item_Pause.Set_Active (Paused);
       Item_Fast_Tape.Set_Active (Machine.Fast_Tape);
       Item_SWRAM.Set_Active (Machine.Model_B_SWRAM);
-      Item_Tube.Set_Active (Tube.Enabled);
+      Item_Tube.Set_Active (Tube.Enabled and then Tube.Kind = Tube.CPU_6502);
+      Item_Z80.Set_Active (Tube.Enabled and then Tube.Kind = Tube.CPU_Z80);
       Item_Speech.Set_Active (Speech.Enabled);
       case Machine.Model is
          when Model_B => Item_B.Set_Active (True);
@@ -450,7 +456,10 @@ package body GUI is
    procedure On_Tube (Item : access Gtk_Check_Menu_Item_Record'Class) is
    begin
       if not Updating_Menu then
+         --  the 6502 and Z80 items: at most one Second Processor
          Tube.Enabled := Item.Get_Active;
+         Tube.Kind := (if Item = Item_Z80 then Tube.CPU_Z80
+                       else Tube.CPU_6502);
          Start_Machine (Machine.Model);    --  a power-on with or without
          Sync_Menu;
       end if;
@@ -615,6 +624,8 @@ package body GUI is
       Settings.Set ("fasttape", Machine.Fast_Tape);
       Settings.Set ("swram", Machine.Model_B_SWRAM);
       Settings.Set ("tube", Tube.Enabled);
+      Settings.Set ("tubecpu",
+                    (if Tube.Kind = Tube.CPU_Z80 then "z80" else "6502"));
       Settings.Set ("speech", Speech.Enabled);
       Settings.Set ("lastdir", To_String (Last_Dir));
       declare
@@ -1091,6 +1102,8 @@ package body GUI is
       Machine.Model_B_SWRAM := Settings.Get ("swram", True);
       if not Tube.Enabled then          --  --tube on the command line wins
          Tube.Enabled := Settings.Get ("tube", False);
+         Tube.Kind := (if Settings.Get ("tubecpu", "6502") = "z80"
+                       then Tube.CPU_Z80 else Tube.CPU_6502);
       end if;
       if not Speech.Enabled then
          Speech.Enabled := Settings.Get ("speech", False);
@@ -1148,6 +1161,8 @@ package body GUI is
                  Item_SWRAM, On_SWRAM'Access);
       Add_Check (M_Machine, "6502 Second Processor (Tube)",
                  Item_Tube, On_Tube'Access);
+      Add_Check (M_Machine, "Z80 Second Processor (Tube)",
+                 Item_Z80, On_Tube'Access);
       Add_Check (M_Machine, "Speech system (TMS5220, Model B / B+)",
                  Item_Speech, On_Speech'Access);
       Add_Separator (M_Machine);

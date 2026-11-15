@@ -32,6 +32,7 @@
 --    --swram N          make slot N sideways RAM
 --    --no-swram         Model B without its default sideways RAM (4-7)
 --    --tube             connect a 6502 Second Processor
+--    --z80              connect a Z80 Second Processor instead
 --    --speech           fit the speech upgrade (TMS5220, Model B / B+)
 --    --links HEX        keyboard links (start-up options), default 00
 --    --attach FILE      insert a disc image in drive 0 without booting
@@ -267,6 +268,9 @@ begin
             end;
          elsif A = "--tube" then
             Tube.Enabled := True;
+         elsif A = "--z80" then
+            Tube.Enabled := True;
+            Tube.Kind := Tube.CPU_Z80;
          elsif A = "--speech" then
             Speech.Enabled := True;
          elsif A = "--no-swram" then

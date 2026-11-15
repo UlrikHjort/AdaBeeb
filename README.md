@@ -13,10 +13,12 @@ It is the BBC sibling of AdaC64 (`../c64`).
     bin/adabeeb --master     # BBC Master 128
     bin/adabeeb --bplus      # BBC Model B+ (64K, shadow RAM, 1770)
     bin/adabeeb --tube       # with a 6502 Second Processor
+    bin/adabeeb --z80        # with a Z80 Second Processor
     bin/adabeeb --speech     # with the speech upgrade (Model B / B+)
     bin/adabeeb game.ssd     # autostart (also .dsd .adf .adl .uef .bas .asm)
     bin/adabeeb-forge        # Forge as the main window
     make tests               # CPU, debugger, bitmap/ULA and BASIC tests
+    make z80tests            # ZEXDOC / ZEXALL on the Z80 core
     make b2tests             # b2's real-hardware VIA / timing tests (slow)
 
 Discs boot with SHIFT+BREAK when they have a boot option, otherwise the
@@ -56,6 +58,7 @@ these:
 | `dfs226.rom` | 16 KB | Acorn 1770 DFS, slot 14 on the B+ | Model B+ discs |
 | `mos320.rom` | 128 KB | Master 128 MOS 3.20: the 16 KB MOS followed by the seven internal ROMs for slots 9-15 (DFS, ADFS, BASIC IV, View, ...) in that order | Master 128 (required) |
 | `6502tube.rom` | 2 KB | The 6502 Second Processor's Tube client ROM (Acorn's 6502 Tube client OS) | only with the Second Processor (`--tube`) |
+| `z80tube.rom` | 4 KB | The Z80 Second Processor's client ROM (Acorn, version 1.20) | only with the Z80 Second Processor (`--z80`) |
 | `phroma.rom` | 16 KB | Acorn's speech PHROM A (the word ROM of the BBC speech upgrade, a TMS6100 dump) | only with speech (`--speech`) |
 | `saa5050.fnt` | 46 KB | SAA5050 teletext character shapes in the B-Em "BEMTTX01" font format | optional: without it mode 7 is drawn with characters made from the OS font |
 
@@ -99,6 +102,7 @@ Notes:
 | ADC | uPD7002, joystick from the keypad or a host game controller, fire buttons. |
 | Model B+ | 64K: 20K shadow RAM (ACCCON bit 7, MODE 128-135), 12K private RAM, 1770 at &FE80, OS 2.00. |
 | Tube | 6502 Second Processor: Tube ULA (R1 24-byte FIFO, R2, R3 one or two bytes, R4, control flags, interrupts) and a 65C02 at 3 MHz with 64 KB RAM. On with `--tube` or Machine -> 6502 Second Processor (Tube), on all three models: BASIC runs in the parasite with PAGE = &800, HIMEM = &8000. Saved in snapshots; the debugger works on either processor. |
+| Z80 Second Processor | A Z80 at 6 MHz with 64 KB RAM on the same Tube: the client ROM at &0000 after reset and for NMIs, paged out by fetches from &8000 up; the Tube registers on I/O ports 0-7; mode 2 interrupts. Boots to "Acorn TUBE Z80 64K" and asks for the CP/M system disc, as the real one does (CP/M is not included). The Z80 core passes ZEXDOC and ZEXALL. On with `--z80` or the Machine menu; saved in snapshots. |
 | Speech | The speech upgrade on the Model B / B+: TMS5220 (commands, status, speak from PHROM, speak external through the FIFO) with LPC synthesis at 8 kHz from the chip's measured coefficient tables, and PHROM A. `SOUND -1,word,0,0` speaks word numbers 128 onwards. On with `--speech` or the Machine menu. |
 | Master 128 | 128 KB: shadow RAM (LYNNE), ANDY, HAZEL, sideways RAM 4-7, ACCCON / ROMSEL, CMOS RAM and real-time clock (kept in `~/.config/adabeeb/cmos.bin`). |
 
@@ -158,6 +162,7 @@ Tools:
     src/fdc8271.*      8271                     src/wd1770.*    WD1770
     src/disc_image.*   SSD / DSD, catalogue     src/gui.*       GtkAda
     src/tube.*         Tube ULA + 6502 Second Processor
+    src/z80.*          Z80 core
     src/speech.*       TMS5220 speech chip, PHROMs, LPC synthesis
     src/rom_dialog.*   sideways ROM / RAM slots dialog
     src/monitor*.*     machine-code monitor     src/disasm.*    disassembler
@@ -169,4 +174,5 @@ Tools:
                        BASIC-against-the-ROM tests; tests/b2/ holds test
                        programs from the b2 emulator (GPL v3) with output
                        and images recorded on real machines
+    tests/z80/         ZEXDOC / ZEXALL (Frank D. Cringle, GPL) for z80tests
     examples/hello.asm

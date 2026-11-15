@@ -25,6 +25,18 @@ if echo "$out" | grep -q "^ *4321 *$"; then
 else
   echo "FAIL tube snapshot"; fail=1
 fi
+# Z80 Second Processor: its client ROM boots and takes the language over
+# the Tube (then asks for the CP/M disc, as the real one does)
+if [ -f roms/z80tube.rom ]; then
+  out=$(bin/adabeeb --b --z80 --headless 300 --screen)
+  if echo "$out" | grep -q "TUBE Z80 64K" && echo "$out" | grep -q "Insert CP/M"; then
+    echo "ok   z80: second processor boots and asks for CP/M"
+  else
+    echo "FAIL z80 tube"; fail=1
+  fi
+else
+  echo "skip z80: roms/z80tube.rom not present"
+fi
 # Speech: SOUND -1 speaks a PHROM word (needs roms/phroma.rom)
 if [ -f roms/phroma.rom ]; then
   w=$(mktemp --suffix=.wav)

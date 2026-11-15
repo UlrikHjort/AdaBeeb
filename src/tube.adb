@@ -26,6 +26,7 @@
 with Ada.Streams.Stream_IO;
 with Interfaces; use Interfaces;
 with MOS6502;
+with Z80;
 
 package body Tube is
 
@@ -59,7 +60,7 @@ package body Tube is
 
    --  Parasite
    RAM : Byte_Array (0 .. 16#FFFF#) := (others => 0);
-   ROM : Byte_Array (0 .. 16#07FF#) := (others => 16#FF#);
+   ROM : Byte_Array (0 .. 16#0FFF#) := (others => 16#FF#);
    Have_ROM : Boolean := False;
    ROM_In : Boolean := True;
    P_IRQ, P_NMI, P_NMI_Prev : Boolean := False;
@@ -120,11 +121,45 @@ package body Tube is
 
    package CPU is new MOS6502 (Read => P_Read, Write => P_Write);
 
+   --  The Z80 parasite
+   function Z_Read (Addr : Word) return Byte is
+     (if ROM_In and then Addr < 16#1000# then ROM (Natural (Addr))
+      else RAM (Natural (Addr)));
+
+   procedure Z_Write (Addr : Word; Value : Byte) is
+   begin
+      RAM (Natural (Addr)) := Value;
+   end Z_Write;
+
+   function Z_In (Port : Word) return Byte is
+     (Parasite_Register_Read (Natural (Port and 7)));
+
+   procedure Z_Out (Port : Word; Value : Byte) is
+   begin
+      Parasite_Register_Write (Natural (Port and 7), Value);
+   end Z_Out;
+
+   procedure Z_Fetch (Addr : Word) is
+   begin
+      if Addr >= 16#8000# then
+         ROM_In := False;          --  the boot ROM pages itself out
+      end if;
+   end Z_Fetch;
+
+   package ZCPU is new Z80 (Read => Z_Read, Write => Z_Write,
+                            In_Port => Z_In, Out_Port => Z_Out,
+                            Fetch_Hook => Z_Fetch);
+
    procedure Reset_Parasite is
    begin
       ROM_In := True;
-      CPU.CMOS := True;           --  the Second Processor's 65C02
-      CPU.Reset;
+      if Kind = CPU_Z80 then
+         ZCPU.Reset;
+         ZCPU.Ack_Byte := 16#FE#;   --  mode 2 vector at I * 256 + &FE
+      else
+         CPU.CMOS := True;        --  the Second Processor's 65C02
+         CPU.Reset;
+      end if;
       Credit := 0;
       P_NMI_Prev := False;
       Is_Halted := False;
@@ -143,12 +178,18 @@ package body Tube is
       F : File_Type;
    begin
       Ok := False;
+      Have_ROM := False;
       Open (F, In_File, Path);
-      if Natural (Size (F)) /= ROM'Length then
-         Close (F);
-         return;
-      end if;
-      Byte_Array'Read (Stream (F), ROM);
+      declare
+         Len : constant Natural := (if Kind = CPU_Z80 then 4096 else 2048);
+      begin
+         if Natural (Size (F)) /= Len then
+            Close (F);
+            return;
+         end if;
+         ROM := (others => 16#FF#);
+         Byte_Array'Read (Stream (F), ROM (0 .. Len - 1));
+      end;
       Close (F);
       Have_ROM := True;
       Ok := True;
@@ -262,7 +303,9 @@ package body Tube is
    begin
       case Reg is
          when 0 =>
-            ROM_In := False;        --  the boot ROM pages itself out
+            if Kind = CPU_6502 then
+               ROM_In := False;     --  the boot ROM pages itself out
+            end if;
             V := PStat (0) or Flags;
          when 1 =>
             V := HP1;
@@ -343,6 +386,21 @@ package body Tube is
          return;
       end if;
       if Is_Halted then
+         return;
+      end if;
+      if Kind = CPU_Z80 then
+         --  6 MHz: three T-states per 2 MHz host cycle
+         Credit := Credit + Host_Cycles * 3;
+         while Credit > 0 loop
+            ZCPU.INT_Line := P_IRQ;
+            if P_NMI and then not P_NMI_Prev then
+               ZCPU.NMI_Pending := True;
+               ROM_In := True;     --  an NMI pages the ROM in: its &0066
+            end if;                --  jumps to the handler at &FC61
+            P_NMI_Prev := P_NMI;
+            ZCPU.Step (N);
+            Credit := Credit - Integer (N);
+         end loop;
          return;
       end if;
       Credit := Credit + Host_Cycles * 3;
@@ -435,6 +493,21 @@ package body Tube is
       Word'Write (S, CPU.PC);
       Byte'Write (S, CPU.Get_P);
       Boolean'Write (S, CPU.NMI_Pending);
+      if Kind = CPU_Z80 then
+         Byte_Array'Write (S, (ZCPU.A, ZCPU.F, ZCPU.B, ZCPU.C, ZCPU.D,
+                               ZCPU.E, ZCPU.H, ZCPU.L, ZCPU.A2, ZCPU.F2,
+                               ZCPU.B2, ZCPU.C2, ZCPU.D2, ZCPU.E2, ZCPU.H2,
+                               ZCPU.L2, ZCPU.I, ZCPU.R));
+         Word'Write (S, ZCPU.IX);
+         Word'Write (S, ZCPU.IY);
+         Word'Write (S, ZCPU.SP);
+         Word'Write (S, ZCPU.PC);
+         Boolean'Write (S, ZCPU.IFF1);
+         Boolean'Write (S, ZCPU.IFF2);
+         Natural'Write (S, ZCPU.IM);
+         Boolean'Write (S, ZCPU.Halted);
+         Boolean'Write (S, ZCPU.NMI_Pending);
+      end if;
    end Save_State;
 
    procedure Load_State (S : access Ada.Streams.Root_Stream_Type'Class) is
@@ -472,12 +545,39 @@ package body Tube is
       Boolean'Read (S, CPU.NMI_Pending);
       CPU.CMOS := True;
       CPU.Jammed := False;
+      if Kind = CPU_Z80 then
+         declare
+            Regs : Byte_Array (0 .. 17);
+            M : Natural;
+         begin
+            Byte_Array'Read (S, Regs);
+            ZCPU.A := Regs (0);  ZCPU.F := Regs (1);  ZCPU.B := Regs (2);
+            ZCPU.C := Regs (3);  ZCPU.D := Regs (4);  ZCPU.E := Regs (5);
+            ZCPU.H := Regs (6);  ZCPU.L := Regs (7);  ZCPU.A2 := Regs (8);
+            ZCPU.F2 := Regs (9); ZCPU.B2 := Regs (10); ZCPU.C2 := Regs (11);
+            ZCPU.D2 := Regs (12); ZCPU.E2 := Regs (13); ZCPU.H2 := Regs (14);
+            ZCPU.L2 := Regs (15); ZCPU.I := Regs (16); ZCPU.R := Regs (17);
+            Word'Read (S, ZCPU.IX);
+            Word'Read (S, ZCPU.IY);
+            Word'Read (S, ZCPU.SP);
+            Word'Read (S, ZCPU.PC);
+            Boolean'Read (S, ZCPU.IFF1);
+            Boolean'Read (S, ZCPU.IFF2);
+            Natural'Read (S, M);
+            ZCPU.IM := M mod 3;
+            Boolean'Read (S, ZCPU.Halted);
+            Boolean'Read (S, ZCPU.NMI_Pending);
+         end;
+      end if;
       Update_Interrupts;
    end Load_State;
 
-   function Parasite_PC return Word is (CPU.PC);
+   function Parasite_PC return Word is
+     (if Kind = CPU_Z80 then ZCPU.PC else CPU.PC);
    function Parasite_Peek (Addr : Word) return Byte is
-     (if ROM_In and then Addr >= 16#F000# then ROM (Natural (Addr and 16#07FF#))
+     (if Kind = CPU_Z80 then Z_Read (Addr)
+      elsif ROM_In and then Addr >= 16#F000#
+      then ROM (Natural (Addr and 16#07FF#))
       else RAM (Natural (Addr)));
 
    procedure Parasite_Poke (Addr : Word; Value : Byte) is

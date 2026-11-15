@@ -320,15 +320,20 @@ package body Machine is
    --  Debugger state used by the bus
    ---------------------------------------------------------------------
 
+   use type Tube.Parasite_Type;
    function Tube_On return Boolean is (Tube.Enabled and then Tube.ROM_Loaded);
-   function Tube_Active return Boolean is (Tube_On);
+   function Tube_6502 return Boolean is
+     (Tube_On and then Tube.Kind = Tube.CPU_6502);
+   --  BASIC, programs started from Forge and the debugger follow a 6502
+   --  parasite; with a Z80 one they stay on the host
+   function Tube_Active return Boolean is (Tube_6502);
    function Speech_Active return Boolean is (Speech_On);
 
    Parasite_Debug : Boolean := False;    --  debugging the parasite
 
    procedure Set_Debug_CPU (C : Debug_CPU_Type) is
    begin
-      Parasite_Debug := C = Parasite_CPU and then Tube_On;
+      Parasite_Debug := C = Parasite_CPU and then Tube_6502;
    end Set_Debug_CPU;
 
    function Debug_CPU return Debug_CPU_Type is
@@ -1124,7 +1129,7 @@ package body Machine is
       end if;
       if Tube.Enabled then
          declare
-            P : constant String := Find_File (ROM_Dir, "6502tube.rom");
+            P : constant String := Find_File (ROM_Dir, Tube.ROM_Name);
             T_Ok : Boolean := False;
          begin
             if P /= "" then
@@ -1132,12 +1137,12 @@ package body Machine is
             end if;
             if not T_Ok then
                Err := To_Unbounded_String
-                 ("6502tube.rom not found: second processor disabled");
+                 (Tube.ROM_Name & " not found: second processor disabled");
                Tube.Enabled := False;
             end if;
          end;
       end if;
-      Set_Debug_CPU (if Tube_On then Parasite_CPU else Host_CPU);
+      Set_Debug_CPU (if Tube_6502 then Parasite_CPU else Host_CPU);
       Speech_On := False;
       Sound.Extra := null;
       if Speech.Enabled and then not Master then
@@ -1181,11 +1186,11 @@ package body Machine is
    function Get_PC return Word is (CPU.PC);
 
    function Program_Peek (Addr : Word) return Byte is
-     (if Tube_On then Tube.Parasite_Peek (Addr) else Peek (Addr));
+     (if Tube_6502 then Tube.Parasite_Peek (Addr) else Peek (Addr));
 
    procedure Program_Poke (Addr : Word; Value : Byte) is
    begin
-      if Tube_On then
+      if Tube_6502 then
          Tube.Parasite_Poke (Addr, Value);
       else
          Poke (Addr, Value);
@@ -1360,7 +1365,7 @@ package body Machine is
    Shift_Frames : Natural := 0;    --  SHIFT held for the boot
 
    function Default_Page return Word is
-     (if Tube_On then 16#0800#
+     (if Tube_6502 then 16#0800#
       elsif Current_Model = Master_128 then 16#0E00#
       elsif Bank_Used (14) or else Bank_Used (13) then 16#1900#
       else 16#0E00#);
@@ -1634,7 +1639,8 @@ package body Machine is
    --  Snapshots
    ---------------------------------------------------------------------
 
-   Snapshot_Magic : constant String := "ADABEEB2";
+   Snapshot_Magic : constant String := "ADABEEB3";
+   Magic_2 : constant String := "ADABEEB2";         --  Tube is a 6502
    Old_Magic : constant String := "ADABEEB1";       --  no Tube flag
 
    procedure Save_Snapshot (Path : String; Ok : out Boolean) is
@@ -1648,6 +1654,9 @@ package body Machine is
       String'Write (S, Snapshot_Magic);
       Model_Type'Write (S, Current_Model);
       Boolean'Write (S, Tube_On);
+      if Tube_On then
+         Tube.Parasite_Type'Write (S, Tube.Kind);
+      end if;
       Byte_Array'Write (S, RAM);
       for B in 0 .. 15 loop
          Boolean'Write (S, Bank_Is_RAM (B));
@@ -1714,7 +1723,9 @@ package body Machine is
       Open (F, In_File, Path);
       S := Stream (F);
       String'Read (S, Magic);
-      if Magic /= Snapshot_Magic and then Magic /= Old_Magic then
+      if Magic /= Snapshot_Magic and then Magic /= Magic_2
+        and then Magic /= Old_Magic
+      then
          Close (F);
          Err := To_Unbounded_String ("not an AdaBeeb snapshot");
          return;
@@ -1725,16 +1736,31 @@ package body Machine is
          Err := To_Unbounded_String ("snapshot is for another model");
          return;
       end if;
-      if Magic = Snapshot_Magic then
+      if Magic /= Old_Magic then
          Boolean'Read (S, With_Tube);
       end if;
       if With_Tube /= Tube_On then
          Close (F);
          Err := To_Unbounded_String
            (if With_Tube
-            then "snapshot needs the 6502 Second Processor (Tube)"
+            then "snapshot needs a Second Processor (Tube)"
             else "snapshot is for a machine without the Second Processor");
          return;
+      end if;
+      if With_Tube then
+         declare
+            K : Tube.Parasite_Type := Tube.CPU_6502;   --  ADABEEB2
+         begin
+            if Magic = Snapshot_Magic then
+               Tube.Parasite_Type'Read (S, K);
+            end if;
+            if K /= Tube.Kind then
+               Close (F);
+               Err := To_Unbounded_String
+                 ("snapshot is for the other kind of Second Processor");
+               return;
+            end if;
+         end;
       end if;
       Byte_Array'Read (S, RAM);
       for B in 0 .. 15 loop
@@ -1877,7 +1903,7 @@ package body Machine is
 
    procedure Scan_Basic_Lines is
       A : Natural := Natural (PM (16#18#)) * 256;
-      Limit : constant Natural := (if Tube_On then 16#F800# else 16#8000#);
+      Limit : constant Natural := (if Tube_6502 then 16#F800# else 16#8000#);
    begin
       Line_Count := 0;
       if PM (A) /= 16#0D# then
@@ -2038,7 +2064,7 @@ package body Machine is
 
    procedure Update_Tube_Hooks is
    begin
-      if Tube_On and then ((Parasite_Debug and then (Debugging or P_Step))
+      if Tube_6502 and then ((Parasite_Debug and then (Debugging or P_Step))
                            or else Basic_BP_Count > 0 or else Basic_Stepping)
       then
          Tube.Before := P_Before'Access;
@@ -2382,7 +2408,7 @@ package body Machine is
             return;
          end if;
          if Executed and then (Basic_BP_Count > 0 or else Basic_Stepping)
-           and then not Tube_On and then Basic_Check
+           and then not Tube_6502 and then Basic_Check
          then
             Stop (Basic_Line);
             return;

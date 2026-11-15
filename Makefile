@@ -18,4 +18,10 @@ b2tests: all
 	python3 -I tests/b2_tests.py via
 	python3 -I tests/b2_tests.py --master cmos
 
-.PHONY: all tests b2tests clean
+# Z80 core: Frank Cringle's instruction exercisers (about 40 s each)
+z80tests: all
+	gprbuild -q -P tests/tests.gpr z80_test.adb
+	bin/z80_test tests/z80/zexdoc.com
+	bin/z80_test tests/z80/zexall.com
+
+.PHONY: all tests b2tests z80tests clean
