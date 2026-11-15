@@ -45,6 +45,8 @@ with Disc_Image;
 with Tape;
 with Tube;
 with Speech;
+with Econet;
+with Econet.File_Server;
 with Asm;
 with Basic;
 
@@ -95,6 +97,7 @@ package body Machine is
    Sys_VIA, User_VIA : VIA.Chip;
    IC32 : Byte := 0;               --  addressable latch
    Speech_On : Boolean := False;   --  speech upgrade fitted and working
+   Econet_On : Boolean := False;   --  Econet fitted (Model B)
    Speech_Data : Byte := 16#FF#;   --  what the speech chip drives
    VIA_Phase : Natural := 0;       --  1 MHz clock divider
 
@@ -328,6 +331,7 @@ package body Machine is
    --  parasite; with a Z80 one they stay on the host
    function Tube_Active return Boolean is (Tube_6502);
    function Speech_Active return Boolean is (Speech_On);
+   function Econet_Active return Boolean is (Econet_On);
 
    Parasite_Debug : Boolean := False;    --  debugging the parasite
 
@@ -525,6 +529,16 @@ package body Machine is
                when 2 => return ADC_Low;
                when others => return 16#40#;
             end case;
+         when 16#FE18# .. 16#FE1F# =>
+            --  Econet station number (and INTOFF)
+            return (if Econet_On then Econet.Station_Read else 16#FE#);
+         when 16#FE20# .. 16#FE2F# =>
+            if Econet_On then
+               Econet.INTON;
+            end if;
+            return 16#FE#;
+         when 16#FEA0# .. 16#FEBF# =>
+            return (if Econet_On then Econet.Read (Reg mod 4) else 16#FE#);
          when others =>
             return 16#FE#;
       end case;
@@ -611,6 +625,10 @@ package body Machine is
          when 16#FEE0# .. 16#FEFF# =>
             if Tube.Enabled and then Tube.ROM_Loaded then
                Tube.Host_Write (Reg mod 8, Value);
+            end if;
+         when 16#FEA0# .. 16#FEBF# =>
+            if Econet_On then
+               Econet.Write (Reg mod 4, Value);
             end if;
          when 16#FEC0# .. 16#FEDF# =>
             if Reg mod 4 = 0 then
@@ -839,6 +857,9 @@ package body Machine is
       if Speech_On then
          Speech.Clock (N);
       end if;
+      if Econet_On then
+         Econet.Clock (N);
+      end if;
       Ticks_1MHz := (VIA_Phase + N) / 2;
       VIA_Phase := (VIA_Phase + N) mod 2;
       if Ticks_1MHz > 0 then
@@ -981,6 +1002,9 @@ package body Machine is
       FDC8271.Reset;
       WD1770.Reset;
       Tube.Reset;
+      if Econet_On then
+         Econet.Reset;
+      end if;
       ACCCON := 0;
       ANDY := False;
       Tape.Reset;
@@ -1000,6 +1024,9 @@ package body Machine is
          null;                 --  held: the CPU stays in reset
       elsif not Down and then Break_Was_Down then
          CPU.Reset;            --  released: the CPU restarts
+         if Econet_On then
+            Econet.Reset;      --  the ADLC shares the reset line
+         end if;
          Tube.Reset;           --  the Tube's reset follows the host's
          CPU.Jammed := False;
       end if;
@@ -1145,6 +1172,27 @@ package body Machine is
       Set_Debug_CPU (if Tube_6502 then Parasite_CPU else Host_CPU);
       Speech_On := False;
       Sound.Extra := null;
+      if Econet_On then
+         Econet.File_Server.Reset;
+         Econet.Stop;
+      end if;
+      Econet_On := Econet.Enabled and then Current_Model = Model_B;
+      if Econet_On then
+         declare
+            E_Ok : Boolean;
+         begin
+            if Econet.File_Server.Root = Null_Unbounded_String then
+               Econet.File_Server.Root := To_Unbounded_String
+                 (Ada.Directories.Containing_Directory (CMOS_Path)
+                  & "/econet");
+            end if;
+            Econet.Start (E_Ok);
+            if not E_Ok then
+               Err := To_Unbounded_String (Econet.Error_Text);
+            end if;
+            Econet.Reset;
+         end;
+      end if;
       if Speech.Enabled and then not Master then
          declare
             P : constant String := Find_File (ROM_Dir, "phroma.rom");
@@ -2270,6 +2318,10 @@ package body Machine is
       end if;
       Disc_Image.Flush (0);
       Disc_Image.Flush (1);
+      if Econet_On then
+         Econet.File_Server.Reset;      --  write back open files
+         Econet.Stop;
+      end if;
    end Shutdown;
 
    ---------------------------------------------------------------------
@@ -2315,6 +2367,9 @@ package body Machine is
       NMI_Now := NMI_Line;
       if NMI_Now and then not NMI_Prev then
          CPU.NMI_Pending := True;
+      end if;
+      if Econet_On and then Econet.Take_NMI then
+         CPU.NMI_Pending := True;            --  network NMI
       end if;
       NMI_Prev := NMI_Now;
 

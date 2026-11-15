@@ -76,6 +76,8 @@ with Settings;
 with Rom_Dialog;
 with Tube;
 with Speech;
+with Econet;
+with Econet.File_Server;
 with Host_Joystick;
 with Disasm;
 
@@ -103,6 +105,7 @@ package body GUI is
    Item_Tube : Gtk_Check_Menu_Item;
    Item_Z80 : Gtk_Check_Menu_Item;
    Item_Speech : Gtk_Check_Menu_Item;
+   Item_Econet : Gtk_Check_Menu_Item;
    Item_B, Item_B_Plus, Item_Master : Gtk_Radio_Menu_Item;
    Updating_Menu : Boolean := False;
 
@@ -149,6 +152,8 @@ package body GUI is
          (if not Tube.Enabled then ""
           elsif Tube.Kind = Tube.CPU_Z80 then " + Z80" else " + Tube") &
          (if Machine.Speech_Active then " + Speech" else "") &
+         (if Machine.Econet_Active
+          then " + Econet" & Econet.Station'Image else "") &
          "  |  drive 0: " & (if D0 = "" then "-" else Short (D0)) &
          (if D1 /= "" then "  drive 1: " & Short (D1) else "") &
          (if Machine.Drive_LED then " [*]" else " [ ]") &
@@ -173,6 +178,7 @@ package body GUI is
       Item_Tube.Set_Active (Tube.Enabled and then Tube.Kind = Tube.CPU_6502);
       Item_Z80.Set_Active (Tube.Enabled and then Tube.Kind = Tube.CPU_Z80);
       Item_Speech.Set_Active (Speech.Enabled);
+      Item_Econet.Set_Active (Econet.Enabled);
       case Machine.Model is
          when Model_B => Item_B.Set_Active (True);
          when Model_B_Plus => Item_B_Plus.Set_Active (True);
@@ -465,6 +471,15 @@ package body GUI is
       end if;
    end On_Tube;
 
+   procedure On_Econet (Item : access Gtk_Check_Menu_Item_Record'Class) is
+   begin
+      if not Updating_Menu then
+         Econet.Enabled := Item.Get_Active;
+         Start_Machine (Machine.Model);    --  fitted at power-on
+         Sync_Menu;
+      end if;
+   end On_Econet;
+
    procedure On_Speech (Item : access Gtk_Check_Menu_Item_Record'Class) is
    begin
       if not Updating_Menu then
@@ -627,6 +642,12 @@ package body GUI is
       Settings.Set ("tubecpu",
                     (if Tube.Kind = Tube.CPU_Z80 then "z80" else "6502"));
       Settings.Set ("speech", Speech.Enabled);
+      Settings.Set ("econet", Econet.Enabled);
+      Settings.Set ("econet_station", Integer (Econet.Station));
+      if Ada.Strings.Unbounded.Length (Econet.File_Server.Root) > 0 then
+         Settings.Set ("econet_dir",
+                       Ada.Strings.Unbounded.To_String (Econet.File_Server.Root));
+      end if;
       Settings.Set ("lastdir", To_String (Last_Dir));
       declare
          W, H : Gint;
@@ -1108,6 +1129,21 @@ package body GUI is
       if not Speech.Enabled then
          Speech.Enabled := Settings.Get ("speech", False);
       end if;
+      if not Econet.Enabled then           --  --econet on the command line
+         Econet.Enabled := Settings.Get ("econet", False);
+         Econet.Station := Interfaces.Unsigned_8
+           (Integer'Max (1, Integer'Min (253, Settings.Get ("econet_station", 1))));
+      end if;
+      if Ada.Strings.Unbounded.Length (Econet.File_Server.Root) = 0 then
+         declare
+            D : constant String := Settings.Get ("econet_dir", "");
+         begin
+            if D /= "" then
+               Econet.File_Server.Root :=
+                 Ada.Strings.Unbounded.To_Unbounded_String (D);
+            end if;
+         end;
+      end if;
       Last_Dir := To_Unbounded_String (Settings.Get ("lastdir", ""));
 
       Gtk_New (Win);
@@ -1165,6 +1201,8 @@ package body GUI is
                  Item_Z80, On_Tube'Access);
       Add_Check (M_Machine, "Speech system (TMS5220, Model B / B+)",
                  Item_Speech, On_Speech'Access);
+      Add_Check (M_Machine, "Econet with file server (Model B)",
+                 Item_Econet, On_Econet'Access);
       Add_Separator (M_Machine);
       Add_Item (M_Machine, "Save _snapshot...", On_Save_Snapshot'Access);
       Add_Item (M_Machine, "_Load snapshot...", On_Load_Snapshot'Access);
@@ -1292,6 +1330,8 @@ package body GUI is
       if (Tube.Enabled and then not Tube.ROM_Loaded)
         or else (Speech.Enabled and then not Machine.Speech_Active
                  and then Machine.Model /= Machine.Master_128)
+        or else (Econet.Enabled and then not Machine.Econet_Active
+                 and then Machine.Model = Machine.Model_B)
       then
          Start_Machine (Machine.Model);    --  load the Tube / speech ROMs
       end if;

@@ -14,6 +14,7 @@ It is the BBC sibling of AdaC64 (`../c64`).
     bin/adabeeb --bplus      # BBC Model B+ (64K, shadow RAM, 1770)
     bin/adabeeb --tube       # with a 6502 Second Processor
     bin/adabeeb --z80        # with a Z80 Second Processor
+    bin/adabeeb --econet 5   # Econet station 5 with the built-in file server
     bin/adabeeb --speech     # with the speech upgrade (Model B / B+)
     bin/adabeeb game.ssd     # autostart (also .dsd .adf .adl .uef .bas .asm)
     bin/adabeeb-forge        # Forge as the main window
@@ -27,6 +28,7 @@ first file is `CHAIN`ed (BASIC) or `*RUN`; tapes get `*TAPE` and
 assembled and started (RUN through a `!basic` stub, else `CALL &start`).
 
 Options: `--roms DIR`, `--rom N=FILE` (sideways ROM in slot N),
+`--econet-dir DIR` (the file server's folder),
 `--swram N`, `--links HEX` (start-up links), `--attach FILE`, and for
 testing `--headless N` (run N frames, save `shot.png`), `--png FILE`,
 `--type TEXT` (typed at the BASIC prompt, `\n` = RETURN),
@@ -103,6 +105,7 @@ Notes:
 | Model B+ | 64K: 20K shadow RAM (ACCCON bit 7, MODE 128-135), 12K private RAM, 1770 at &FE80, OS 2.00. |
 | Tube | 6502 Second Processor: Tube ULA (R1 24-byte FIFO, R2, R3 one or two bytes, R4, control flags, interrupts) and a 65C02 at 3 MHz with 64 KB RAM. On with `--tube` or Machine -> 6502 Second Processor (Tube), on all three models: BASIC runs in the parasite with PAGE = &800, HIMEM = &8000. Saved in snapshots; the debugger works on either processor. |
 | Z80 Second Processor | A Z80 at 6 MHz with 64 KB RAM on the same Tube: the client ROM at &0000 after reset and for NMIs, paged out by fetches from &8000 up; the Tube registers on I/O ports 0-7; mode 2 interrupts. Boots to "Acorn TUBE Z80 64K" and asks for the CP/M system disc, as the real one does (CP/M is not included). The Z80 core passes ZEXDOC and ZEXALL. On with `--z80` or the Machine menu; saved in snapshots. |
+| Econet | Model B: the MC6854 ADLC at &FEA0 (status and prioritised status, FIFOs, interrupts to NMI through INTON / INTOFF at &FE20 / &FE18), the station number at &FE18, and the network a message at a time as AUN does (the four-way handshake is answered locally). A file server is built in as station 254; other AdaBeeb instances on this computer are other stations. Use the NFS in DNFS 1.20. See below. |
 | Speech | The speech upgrade on the Model B / B+: TMS5220 (commands, status, speak from PHROM, speak external through the FIFO) with LPC synthesis at 8 kHz from the chip's measured coefficient tables, and PHROM A. `SOUND -1,word,0,0` speaks word numbers 128 onwards. On with `--speech` or the Machine menu. |
 | Master 128 | 128 KB: shadow RAM (LYNNE), ANDY, HAZEL, sideways RAM 4-7, ACCCON / ROMSEL, CMOS RAM and real-time clock (kept in `~/.config/adabeeb/cmos.bin`). |
 
@@ -117,6 +120,35 @@ memory are its own, and BASIC line breakpoints follow BASIC there.
 `host` / `tube` in the monitor (`cpu` shows which) and Debug -> Switch
 processor in Forge change that. Code that pokes the screen directly
 must run on the host (as on a real machine).
+
+## Econet
+
+Turn Econet on with `--econet N` (station N, default 1) or Machine ->
+Econet; it is fitted to the Model B, whose DNFS ROM contains the network
+filing system. Select the network with `*NET` (or N+BREAK), then log on
+to the file server with `*I AM name` (any name; no passwords):
+
+    *NET
+    *I AM GUEST
+    SAVE "PROG"          LOAD "PROG"          CHAIN "PROG"
+    *CAT    *EX    *INFO PROG    *CDIR GAMES    *DIR GAMES    *DIR ^
+    *DELETE PROG    *RENAME A B    *RUN CODE    *HELLO (runs file HELLO)
+
+The file server (station 254) serves the folder given by `--econet-dir`
+(default `~/.config/adabeeb/econet`, created when first used). Files are
+ordinary host files; their load and execution addresses are kept in
+`NAME.inf` beside them, so you can copy programs in and out. A directory
+called `Library` is the library. OPENIN / OPENOUT / OPENUP, BGET#, BPUT#,
+PRINT#, INPUT#, PTR#, EXT# and EOF# work on files on the server.
+
+Several AdaBeeb instances on the same computer form one network: start
+each with its own station number (`--econet 5`, `--econet 6`, ...). They
+reach each other over UDP on 127.0.0.1, port 32768 + station, with AUN's
+packet format, so programs can use OSWORD &10 / &11 to send messages.
+The network does not reach other computers. Because the handshake is
+answered locally, sending to a station that is not running reports "Net
+error" rather than "Not listening", and immediate operations (remote
+peek / poke, *VIEW, *REMOTE) are not answered.
 
 ## Keys
 
@@ -163,6 +195,7 @@ Tools:
     src/disc_image.*   SSD / DSD, catalogue     src/gui.*       GtkAda
     src/tube.*         Tube ULA + 6502 Second Processor
     src/z80.*          Z80 core
+    src/econet.*       ADLC, AUN-style network    src/econet-file_server.* file server
     src/speech.*       TMS5220 speech chip, PHROMs, LPC synthesis
     src/rom_dialog.*   sideways ROM / RAM slots dialog
     src/monitor*.*     machine-code monitor     src/disasm.*    disassembler

@@ -33,6 +33,8 @@
 --    --no-swram         Model B without its default sideways RAM (4-7)
 --    --tube             connect a 6502 Second Processor
 --    --z80              connect a Z80 Second Processor instead
+--    --econet [N]       fit Econet as station N (default 1; Model B)
+--    --econet-dir DIR   folder of the built-in file server (station 254)
 --    --speech           fit the speech upgrade (TMS5220, Model B / B+)
 --    --links HEX        keyboard links (start-up options), default 00
 --    --attach FILE      insert a disc image in drive 0 without booting
@@ -70,6 +72,8 @@ with Basic;
 with Disc_Image;
 with Tube;
 with Speech;
+with Econet;
+with Econet.File_Server;
 with Asm;
 
 procedure AdaBeeb is
@@ -271,6 +275,16 @@ begin
          elsif A = "--z80" then
             Tube.Enabled := True;
             Tube.Kind := Tube.CPU_Z80;
+         elsif A = "--econet" then
+            Econet.Enabled := True;
+            if I < Argument_Count
+              and then Argument (I + 1)'Length > 0
+              and then Argument (I + 1) (Argument (I + 1)'First) in '0' .. '9'
+            then
+               Econet.Station := Types.Byte'Value (Next);
+            end if;
+         elsif A = "--econet-dir" then
+            Econet.File_Server.Root := To_Unbounded_String (Next);
          elsif A = "--speech" then
             Speech.Enabled := True;
          elsif A = "--no-swram" then

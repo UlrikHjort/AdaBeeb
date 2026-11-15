@@ -37,6 +37,29 @@ if [ -f roms/z80tube.rom ]; then
 else
   echo "skip z80: roms/z80tube.rom not present"
 fi
+# Econet: NFS logs on to the built-in file server, SAVEs, LOADs and RUNs
+d=$(mktemp -d)
+out=$(bin/adabeeb --b --econet 201 --econet-dir "$d" --headless 1500 --type '*NET\n*I AM TEST\n10 PRINT "NET"+"WORKS"\nSAVE "PROG"\nNEW\nLOAD "PROG"\nRUN\n*CAT\n' --screen)
+if echo "$out" | grep -q "^NETWORKS" && echo "$out" | grep -q "PROG *WR/r" && [ -f "$d/PROG" ]; then
+  echo "ok   econet: file server SAVE / LOAD / *CAT"
+else
+  echo "FAIL econet file server"; fail=1
+fi
+rm -rf "$d"
+# Econet between two instances: station 202 sends to station 201
+rx='*NET\n10 DIM C% 20,B% 50:?C%=0:C%?1=&7F:C%?2=&50:C%?3=0:C%?4=0:C%!5=B%:C%!9=B%+40\n20 A%=&11:X%=C%:Y%=C% DIV 256:CALL &FFF1:N%=?C%\n30 REPEAT A%=&33:X%=N%:Y%=0:U%=(USR&FFF4 AND &FF00) DIV 256:UNTIL U%>=128\n40 PRINT "GOT ";$B%\nRUN\n'
+tx='*NET\n10 DIM C% 20,B% 50:$B%="HELLO":?C%=&80:C%?1=&50:C%?2=201:C%?3=0:C%!4=B%:C%!8=B%+6\n20 A%=&10:X%=C%:Y%=C% DIV 256:CALL &FFF1\n30 REPEAT A%=&32:U%=(USR&FFF4 AND &FF00) DIV 256:UNTIL (U% AND &80)=0\n40 PRINT "TX ";~U%\nRUN\n'
+r=$(mktemp)
+bin/adabeeb --b --econet 201 --headless 6000 --type "$rx" --screen > "$r" &
+sleep 3
+txout=$(bin/adabeeb --b --econet 202 --headless 4000 --type "$tx" --screen)
+wait
+if grep -q "GOT HELLO" "$r" && echo "$txout" | grep -q "^TX 0"; then
+  echo "ok   econet: a message between two AdaBeeb instances"
+else
+  echo "FAIL econet between instances"; fail=1
+fi
+rm -f "$r"
 # Speech: SOUND -1 speaks a PHROM word (needs roms/phroma.rom)
 if [ -f roms/phroma.rom ]; then
   w=$(mktemp --suffix=.wav)
