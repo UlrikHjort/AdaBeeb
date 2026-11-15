@@ -5,6 +5,30 @@ GtkAda, with **Forge**: a 6502 assembler IDE, BBC BASIC editor,
 source-level debugger and graphics editors around the running machine.
 It is the BBC sibling of AdaC64 (`../c64`).
 
+## Screenshots
+
+<table>
+<tr>
+<td><img src="docs/screenshots/gui.png" width="400" alt="AdaBeeb window"><br>The emulator window (mode 7 teletext)</td>
+<td><img src="docs/screenshots/forge.png" width="400" alt="Forge"><br>Forge: assembler, debugger and memory view</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/mode2.png" width="400" alt="Mode 2 graphics"><br>MODE 2 graphics from BBC BASIC</td>
+<td><img src="docs/screenshots/mode1.png" width="400" alt="Mode 1 graphics"><br>MODE 1 hidden-line plot</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/master.png" width="400" alt="Master 128"><br>BBC Master 128 and its ROMs</td>
+<td><img src="docs/screenshots/econet.png" width="400" alt="Econet"><br>Econet: NFS and the built-in file server</td>
+</tr>
+<tr>
+<td><img src="docs/screenshots/tube.png" width="400" alt="6502 Second Processor"><br>BASIC on the 6502 Second Processor</td>
+<td><img src="docs/screenshots/z80.png" width="400" alt="Z80 Second Processor"><br>The Z80 Second Processor waiting for CP/M</td>
+</tr>
+</table>
+
+The emulated screens are made by `docs/screenshots/make.sh` from the
+BASIC programs in `docs/screenshots/src/`.
+
 ## Build and run
 
     make                     # GNAT, gprbuild, GtkAda, libpulse-dev, zlib,
