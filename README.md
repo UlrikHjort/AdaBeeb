@@ -233,3 +233,9 @@ Tools:
                        and images recorded on real machines
     tests/z80/         ZEXDOC / ZEXALL (Frank D. Cringle, GPL) for z80tests
     examples/hello.asm
+
+## Licence
+
+AdaBeeb is released under the MIT licence (`LICENSE`). Test programs
+from other projects in `tests/` (GPL) and the TMS5220 tables (BSD) keep
+their own licences: see `THIRD_PARTY.md`. No ROMs are included.

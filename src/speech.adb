@@ -30,8 +30,9 @@ package body Speech is
 
    ---------------------------------------------------------------------
    --  TMS5220 coefficient tables, as measured from decapped chips (from
-   --  MAME's tms5110r.hxx: BSD-3-Clause, Frank Palazzolo, Couriersud,
-   --  Jonathan Gevaryahu)
+   --  MAME's tms5110r.hxx: Copyright (c) Frank Palazzolo, Couriersud,
+   --  Jonathan Gevaryahu; BSD-3-Clause, see THIRD_PARTY.md for the full
+   --  notice and conditions)
    ---------------------------------------------------------------------
 
    Energy_Table : constant array (0 .. 15) of Integer :=
